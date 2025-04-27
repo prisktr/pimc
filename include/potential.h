@@ -16,13 +16,13 @@ class Path;
 class LookupTable;
 class Container;
 
-// ========================================================================  
+// ========================================================================
 // PotentialBase Class
-// ========================================================================  
-/** 
+// ========================================================================
+/**
  * The base class from which all specific potentials are derived from.
  *
- * This class contains methods which return the actual value of 
+ * This class contains methods which return the actual value of
  * the potential, an effective potential related to the pair product
  * approximation,  one which returns the gradient of the potential and a final
  * one which generates a sensible initial particle configuration.
@@ -34,7 +34,7 @@ class PotentialBase {
     public:
         PotentialBase ();
         virtual ~PotentialBase();
-    
+
         /** The potential */
         virtual double V(const dVec &) { return 0.0; }
 
@@ -51,9 +51,9 @@ class PotentialBase {
          *  and tau */
         virtual double dVdlambda(const dVec &, const dVec &) {return 0.0;}
         virtual double dVdtau(const dVec &, const dVec &) {return 0.0;}
-        
+
         /** Default Initial configuration of particles*/
-        virtual blitz::Array<dVec,1> initialConfig(const Container*, MTRand &, const int); 
+        virtual blitz::Array<dVec,1> initialConfig(const Container*, MTRand &, const int);
 
         /** A debug method that output's the potential to a supplied separation */
         void output(const double);
@@ -67,14 +67,14 @@ class PotentialBase {
         double deltaSeparation(double sep1,double sep2) const;
 };
 
-// ========================================================================  
+// ========================================================================
 // TabulatedPotential Class
-// ========================================================================  
-/** 
+// ========================================================================
+/**
  * Pre-tabulated potential for complicated functions.
  *
  * In order to speed up the evaluation of complicated potentials, we
- * use a 2-point Newton-Gregory spline fit to perform the actual 
+ * use a 2-point Newton-Gregory spline fit to perform the actual
  * interpolation.
  */
 class TabulatedPotential {
@@ -104,20 +104,20 @@ class TabulatedPotential {
         virtual double direct(const blitz::Array<double,1>&, const blitz::TinyVector<double,2>&, const double);
 
         /** The functional value of V */
-        virtual double valueV (const double) = 0;               
-        
+        virtual double valueV (const double) = 0;
+
         /** The functional value of dV/dr */
         virtual double valuedVdr (const double) = 0;
 
         /** The functional value of d2V/dr2 */
-        virtual double valued2Vdr2 (const double) = 0;                  
-    
+        virtual double valued2Vdr2 (const double) = 0;
+
 };
 
-// ========================================================================  
+// ========================================================================
 // FreePotential Class
-// ========================================================================  
-/** 
+// ========================================================================
+/**
  * Free potential.
  */
 class FreePotential: public PotentialBase {
@@ -134,11 +134,11 @@ class FreePotential: public PotentialBase {
         }
 };
 
-// ========================================================================  
+// ========================================================================
 // HarmonicPotential Class
-// ========================================================================  
-/** 
- * Computes the potential energy for an external harmonic potential.  
+// ========================================================================
+/**
+ * Computes the potential energy for an external harmonic potential.
  *
  * We work in generalized units where hbar omega / k_B = 1.
  */
@@ -147,11 +147,11 @@ class HarmonicPotential : public PotentialBase {
         HarmonicPotential ();
         HarmonicPotential (double);
         ~HarmonicPotential ();
-    
+
         double omega2;       //The SHO frequency in units of hbar
 
         /** The potential. */
-        double V(const dVec &r) { 
+        double V(const dVec &r) {
             return (omega2*dot(r,r)/(4.0*constants()->lambda()));
         }
 
@@ -163,12 +163,12 @@ class HarmonicPotential : public PotentialBase {
         }
 
         /** Initial configuration corresponding to Harmonic potential */
-	blitz::Array<dVec,1> initialConfig(const Container*, MTRand &, const int); 
+	blitz::Array<dVec,1> initialConfig(const Container*, MTRand &, const int);
 };
 
-// ========================================================================  
+// ========================================================================
 // SingleWellPotential Class
-// ========================================================================  
+// ========================================================================
 /**
  * Computes the potential energy for an external single well potential.
  */
@@ -178,7 +178,7 @@ class SingleWellPotential : public PotentialBase {
         ~SingleWellPotential ();
 
         /** The potential */
-        double V(const dVec &r) { 
+        double V(const dVec &r) {
             double r2 = dot(r,r);
             return ( 0.5*r2 + r2*r2 );
         }
@@ -192,9 +192,9 @@ class SingleWellPotential : public PotentialBase {
         }
 };
 
-// ========================================================================  
+// ========================================================================
 // HarmonicCylinderPotential Class
-// ========================================================================  
+// ========================================================================
 /**
  * Computes the potential energy for an external harmonic potential with
  * axial symmetry.
@@ -205,11 +205,11 @@ class HarmonicCylinderPotential : public PotentialBase {
         ~HarmonicCylinderPotential ();
 
         /** The potential. */
-        double V(const dVec &r) { 
+        double V(const dVec &r) {
             double r2 = 0.0;
             for (int i=0; i < NDIM-1; i++)
                 r2 += r[i]*r[i];
-            return ( 0.5 * c * constants()->m() * w * w * r2 ); 
+            return ( 0.5 * c * constants()->m() * w * w * r2 );
         }
 
         /** The gradient of the potential. */
@@ -226,10 +226,10 @@ class HarmonicCylinderPotential : public PotentialBase {
         double c;               // A dimension-full constant
 };
 
-// ========================================================================  
+// ========================================================================
 // DeltaPotential Class
-// ========================================================================  
-/** 
+// ========================================================================
+/**
  * Computes the potential energy for delta function interaction potential,
  * approximated here as the limit of a Cauchy distribution.
  *
@@ -251,7 +251,7 @@ class DeltaPotential : public PotentialBase  {
         }
 
         /**
-         * Return the gradient of the delta function potential with strength 
+         * Return the gradient of the delta function potential with strength
          * g approximated as the limit of a Gaussian distribution.
          * Tested and working in Mathematica.
          */
@@ -265,9 +265,9 @@ class DeltaPotential : public PotentialBase  {
 };
 
 
-// ========================================================================  
+// ========================================================================
 // LorentzianPotential Class
-// ========================================================================  
+// ========================================================================
 /**
  * Computes the potential energy for delta function interaction potential,
  * approximated here as the limit of a Cauchy distribution.
@@ -277,7 +277,7 @@ class LorentzianPotential : public PotentialBase  {
         LorentzianPotential (double,double);
         ~LorentzianPotential ();
 
-        /** 
+        /**
          * Return the delta function potential with strength 2c approximated as
          * the limit of a Lorentzian distribution.
          * Tested and working in Mathematica.
@@ -286,8 +286,8 @@ class LorentzianPotential : public PotentialBase  {
             return (norm / (a*a + dot(r,r)));
         }
 
-        /** 
-         * Return the gradient of the delta function potential with strength 
+        /**
+         * Return the gradient of the delta function potential with strength
          * 2c approximated as the limit of a Lorentzian distribution.
          * Tested and working in Mathematica.
          */
@@ -302,13 +302,13 @@ class LorentzianPotential : public PotentialBase  {
         double a;               // The order of the limit
 };
 
-// ========================================================================  
+// ========================================================================
 // SutherlandPotential Class
-// ========================================================================  
-/** 
+// ========================================================================
+/**
  * Computes the potential energy for the periodic Sutherland model which
  * approximates long-range 1/r^2 interactions on a ring.
- * @see:  B. Sutherland, Phys Rev A 4, 2019 (1971) 
+ * @see:  B. Sutherland, Phys Rev A 4, 2019 (1971)
  */
 class SutherlandPotential : public PotentialBase  {
     public:
@@ -339,7 +339,7 @@ class SutherlandPotential : public PotentialBase  {
         double grad2V(const dVec &r) {
             double x = pioL*(sqrt(dot(r,r))+EPS);
             double s = sin(x);
-            return 2.0* g * pioL * pioL * pioL * pioL * (2.0+cos(2*x)) / 
+            return 2.0* g * pioL * pioL * pioL * pioL * (2.0+cos(2*x)) /
                 (s*s*s*s);
         }
 
@@ -348,10 +348,10 @@ class SutherlandPotential : public PotentialBase  {
         double pioL;            // \pi/L
 };
 
-// ========================================================================  
+// ========================================================================
 // Dipolar Potential Class
-// ========================================================================  
-/** 
+// ========================================================================
+/**
  * Computes the potential energy for polarized electrical dipoles with strength
  * D in reduced units where lengths are measured in units of a = m D / \hbar^2 and
  * energies in units of \hbar^2 / m a^2.
@@ -396,11 +396,11 @@ class DipolePotential : public PotentialBase  {
 
 
 #if NDIM > 2
-// ========================================================================  
+// ========================================================================
 // Hard Cylinder Potential Class
-// ========================================================================  
-/** 
- * Computes the value of the external wall potential for a hard-walled 
+// ========================================================================
+/**
+ * Computes the value of the external wall potential for a hard-walled
  * cylindrical cavity.
  */
 class HardCylinderPotential : public PotentialBase {
@@ -433,12 +433,12 @@ class HardCylinderPotential : public PotentialBase {
 #endif
 
 #if NDIM > 2
-// ========================================================================  
+// ========================================================================
 // Plated LJ Cylinder Potential Class
-// ========================================================================  
-/** 
- * Computes the value of the external wall potential for a plated cylindrical 
- * cavity. 
+// ========================================================================
+/**
+ * Computes the value of the external wall potential for a plated cylindrical
+ * cavity.
  */
 class PlatedLJCylinderPotential : public PotentialBase, public TabulatedPotential {
     public:
@@ -461,7 +461,7 @@ class PlatedLJCylinderPotential : public PotentialBase, public TabulatedPotentia
         double grad2V(const dVec &);
 
         /** Initial configuration corresponding to the LJ cylinder potential */
-	blitz::Array<dVec,1> initialConfig(const Container*, MTRand &, const int); 
+	blitz::Array<dVec,1> initialConfig(const Container*, MTRand &, const int);
 
     private:
         /** local methods for computing the potential of a LJ cylinder */
@@ -483,8 +483,8 @@ class PlatedLJCylinderPotential : public PotentialBase, public TabulatedPotentia
         double minV;    // The minimum value of the potential
 
         /* Used to construct the lookup tables */
-        double valueV (const double);               
-        double valuedVdr (const double);                
+        double valueV (const double);
+        double valuedVdr (const double);
         double valued2Vdr2 (const double);
 };
 
@@ -492,9 +492,9 @@ class PlatedLJCylinderPotential : public PotentialBase, public TabulatedPotentia
 // INLINE FUNCTION DEFINITIONS
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-/** 
- * Return the gradient of aziz potential for separation r using a 
- * lookup table. 
+/**
+ * Return the gradient of aziz potential for separation r using a
+ * lookup table.
  */
 inline dVec PlatedLJCylinderPotential::gradV(const dVec &r) {
     double rnorm = sqrt(r[0]*r[0] + r[1]*r[1]);
@@ -510,9 +510,9 @@ inline dVec PlatedLJCylinderPotential::gradV(const dVec &r) {
     return gV;
 }
 
-/** 
- * Return the Laplacian of aziz potential for separation r using a 
- * lookup table. 
+/**
+ * Return the Laplacian of aziz potential for separation r using a
+ * lookup table.
  */
 inline double PlatedLJCylinderPotential::grad2V(const dVec &r) {
     double rnorm = sqrt(r[0]*r[0] + r[1]*r[1]);
@@ -530,12 +530,12 @@ inline double PlatedLJCylinderPotential::grad2V(const dVec &r) {
 #endif
 
 #if NDIM > 2
-// ========================================================================  
+// ========================================================================
 // LJ Cylinder Potential Class
-// ========================================================================  
-/** 
- * Computes the value of the external wall potential for a cylindrical 
- * cavity. 
+// ========================================================================
+/**
+ * Computes the value of the external wall potential for a cylindrical
+ * cavity.
  */
 class LJCylinderPotential : public PotentialBase, public TabulatedPotential {
     public:
@@ -558,7 +558,7 @@ class LJCylinderPotential : public PotentialBase, public TabulatedPotential {
         double grad2V(const dVec &);
 
         /** Initial configuration corresponding to the LJ cylinder potential */
-	blitz::Array<dVec,1> initialConfig(const Container*, MTRand &, const int); 
+	blitz::Array<dVec,1> initialConfig(const Container*, MTRand &, const int);
 
     private:
         /* All the parameters needed for the LJ wall potential */
@@ -572,8 +572,8 @@ class LJCylinderPotential : public PotentialBase, public TabulatedPotential {
         double minV;    // The minimum value of the potential
 
         /* Used to construct the lookup tables */
-        double valueV (const double);               
-        double valuedVdr (const double);                
+        double valueV (const double);
+        double valuedVdr (const double);
         double valued2Vdr2 (const double);
 };
 
@@ -581,9 +581,9 @@ class LJCylinderPotential : public PotentialBase, public TabulatedPotential {
 // INLINE FUNCTION DEFINITIONS
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-/** 
- * Return the gradient of aziz potential for separation r using a 
- * lookup table. 
+/**
+ * Return the gradient of aziz potential for separation r using a
+ * lookup table.
  */
 inline dVec LJCylinderPotential::gradV(const dVec &r) {
     double rnorm = sqrt(r[0]*r[0] + r[1]*r[1]);
@@ -599,9 +599,9 @@ inline dVec LJCylinderPotential::gradV(const dVec &r) {
     return gV;
 }
 
-/** 
- * Return the Laplacian of aziz potential for separation r using a 
- * lookup table. 
+/**
+ * Return the Laplacian of aziz potential for separation r using a
+ * lookup table.
  */
 inline double LJCylinderPotential::grad2V(const dVec &r) {
     double rnorm = sqrt(r[0]*r[0] + r[1]*r[1]);
@@ -619,21 +619,21 @@ inline double LJCylinderPotential::grad2V(const dVec &r) {
 #endif
 
 #if NDIM > 2
-// ========================================================================  
+// ========================================================================
 // LJ Hour Glass Potential Class
-// ========================================================================  
-/** 
+// ========================================================================
+/**
  * Computes the value of the external wall potential for an hour-glass shaped
- * cavity. 
+ * cavity.
  */
-class LJHourGlassPotential : public PotentialBase { 
+class LJHourGlassPotential : public PotentialBase {
 
     public:
         LJHourGlassPotential (const double, const double, const double);
         ~LJHourGlassPotential ();
 
         /** The integrated LJ hour glass potential. */
-        double V(const dVec &); 
+        double V(const dVec &);
 
         /** The gradient of the potential. Use the prrimitive approx. */
         dVec gradV(const dVec &pos) {
@@ -646,8 +646,8 @@ class LJHourGlassPotential : public PotentialBase {
         }
 
         /** Initial configuration corresponding to the LJ cylinder potential */
-	blitz::Array<dVec,1> initialConfig(const Container*, MTRand &, const int); 
-	blitz::Array<dVec,1> initialConfig1(const Container*, MTRand &, const int); 
+	blitz::Array<dVec,1> initialConfig(const Container*, MTRand &, const int);
+	blitz::Array<dVec,1> initialConfig1(const Container*, MTRand &, const int);
 
     private:
         /* All the parameters needed for the LJ wall potential */
@@ -676,10 +676,10 @@ class LJHourGlassPotential : public PotentialBase {
 };
 #endif
 
-// ========================================================================  
+// ========================================================================
 // Aziz Potential Class
-// ========================================================================  
-/** 
+// ========================================================================
+/**
  * Computes the value of the semi-empircal Aziz potential that is known
  * to be accurate for He-4.
  */
@@ -702,8 +702,8 @@ class AzizPotential : public PotentialBase, public TabulatedPotential {
         double rm, A, epsilon, alpha, D, C6, C8, C10;
 
         /* Used to construct the lookup tables */
-        double valueV (const double);               
-        double valuedVdr (const double);                    
+        double valueV (const double);
+        double valuedVdr (const double);
         double valued2Vdr2 (const double);
 
         /* The F-function needed for the Aziz potential */
@@ -716,13 +716,13 @@ class AzizPotential : public PotentialBase, public TabulatedPotential {
             double ix = 1.0/x;
             double r = 2.0*D*ix*ix*(D*ix-1.0)*exp(-(D*ix - 1.0)*(D*ix - 1.0));
             return (x < D ? r : 0.0 );
-        }   
-     
+        }
+
         /* The 2nd derivative of the F-function needed for the Aziz potential
          * Double checked with Mathematica --MTG */
         double d2F(const double x) {
             double ix = 1.0/x;
-            double r = 2.0*D*ix*ix*ix*( 2.0*D*D*D*ix*ix*ix - 4.0*D*D*ix*ix 
+            double r = 2.0*D*ix*ix*ix*( 2.0*D*D*D*ix*ix*ix - 4.0*D*D*ix*ix
                     - D*ix + 2.0) * exp(-(D*ix - 1.0)*(D*ix - 1.0));
             return (x < D ? r : 0.0 );
         }
@@ -733,8 +733,8 @@ class AzizPotential : public PotentialBase, public TabulatedPotential {
 // INLINE FUNCTION DEFINITIONS
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-/** 
- * Return the aziz potential for separation r using a lookup table. 
+/**
+ * Return the aziz potential for separation r using a lookup table.
  */
 inline double AzizPotential::V(const dVec &r) {
     //double rnorm = sqrt(dot(r,r));
@@ -744,9 +744,9 @@ inline double AzizPotential::V(const dVec &r) {
 
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-/** 
- * Return the gradient of aziz potential for separation r using a 
- * lookup table. 
+/**
+ * Return the gradient of aziz potential for separation r using a
+ * lookup table.
  */
 inline dVec AzizPotential::gradV(const dVec &r) {
     double rnorm = sqrt(dot(r,r));
@@ -758,9 +758,9 @@ inline dVec AzizPotential::gradV(const dVec &r) {
 
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-/** 
- * Return the Laplacian of aziz potential for separation r using a 
- * lookup table. 
+/**
+ * Return the Laplacian of aziz potential for separation r using a
+ * lookup table.
  */
 
 inline double AzizPotential::grad2V(const dVec &r) {
@@ -771,11 +771,208 @@ inline double AzizPotential::grad2V(const dVec &r) {
     return g2V;
 }
 
+// ========================================================================
+// Hydrogen Potential Class
+// ========================================================================
 
-// ========================================================================  
+class H2LJ : public PotentialBase, public TabulatedPotential
+{
+     public:
+         H2LJ (const Container *);
+         ~H2LJ ();
+
+         /* The Lennard-Jones potential of H2 */
+         double V(const dVec &);
+
+         /* The gradient of the Lennard-Jones potential */
+         dVec gradV(const dVec &);
+
+         /* The Laplacian of the Lennard-Jones potential */
+         double grad2V(const dVec &);
+
+     private:
+         /* All the parameters of the Lennard Jones potential */
+         double EPSILON, SIGMA;
+
+         /* Used to construct the lookup tables */
+         double valueV (const double);
+         double valuedVdr (const double);
+         double valued2Vdr2 (const double);
+
+ };
+
+
+ inline double H2LJ::V(const dVec &r)
+ {
+     return direct(lookupV,extV,sqrt(dot(r,r)));
+ }
+
+ inline dVec H2LJ::gradV(const dVec &r)
+ {
+     double rnorm = sqrt(dot(r,r));
+     dVec gV;
+     gV = (direct(lookupdVdr,extdVdr,rnorm)/rnorm)*r;
+     return gV;
+ }
+
+ inline double H2LJ::grad2V(const dVec &r)
+ {
+     double rnorm = sqrt(dot(r,r));
+     double g2V;
+     g2V = direct(lookupd2Vdr2,extd2Vdr2,rnorm);
+     return g2V;
+ }
+
+
+ // ========================================================================
+ // Silvera-Goldman Potential Class
+ // ========================================================================
+
+ // See: I.F. Silvera and V.V. Goldman, J. Chem. Phys. 69, 4209 (1978).
+ // This implementation includes the effective Axilrod-Teller interactions.
+
+ class SilveraPotential : public PotentialBase, public TabulatedPotential {
+     public:
+         SilveraPotential (const Container *);
+         ~SilveraPotential ();
+
+         /* The Silvera-Goldman Potential */
+         double V(const dVec &);
+
+         /* The gradient of the Silvera-Goldman potential */
+         dVec gradV(const dVec &);
+
+         /* The Laplacian of the Aziz potential */
+         double grad2V(const dVec &);
+
+     private:
+         /* All the parameters of the Silvera-Goldman potential */
+         double ALPHA, BETA, GAMMA, C6, C8, C9, C10, Rc;
+         double BohrPerAngstrom, KelvinPerHartree;
+
+         /* Used to construct the lookup tables */
+         double valueV (const double);
+         double valuedVdr (const double);
+         double valued2Vdr2 (const double);
+
+         // The damping function needed for the Silvera-Golman potential.
+         // The argument must be in units of Bohr radii.
+         double F(const double r)
+         {
+             double term = -1.0*(Rc/r - 1.0)*(Rc/r - 1.0);
+             return (r < Rc ? exp(term) : 1.0);
+         }
+
+         // The 1st derivative of damping function.
+         // Calculated with Mathematica.  03/05/25 TRP.
+         double dF(const double r)
+         {
+             double ir = 1.0/r;
+             double ir3 = ir*ir*ir;
+             double term = -1.0*(Rc/r - 1.0)*(Rc/r - 1.0);
+             double express = 2.0*Rc*(Rc-r)*ir3*exp(term);
+             return (r < Rc ? express : 0.0);
+         }
+
+         // The 2nd derivative of the damping function.
+         // Calculated witwh Mathematica.  03/05/25 TRP.
+           double d2F(const double r)
+           {
+               double ir = 1.0/r;
+               double ir6 = (ir*ir*ir)*(ir*ir*ir);
+               double t1 = 2.0*Rc*Rc*Rc;
+               double t2 = -4.0*Rc*Rc*r;
+               double t3 = -1.0*Rc*r*r;
+               double t4 = 2.0*r*r*r;
+               double poly = t1 + t2 + t3 + t4;
+               double term = -1.0*(Rc/r - 1.0)*(Rc/r - 1.0);
+               double express = 2.0*Rc*exp(term)*poly*ir6;
+               return (r < Rc ? express : 0.0);
+         }
+
+         // Repulsive part of potential, along with first and second derivatives.
+         // Atomic units (r in Bohr; V in Hartree).
+         double Vrep(const double r)
+         {
+             return exp(ALPHA - BETA*r - GAMMA*r*r);
+         }
+
+         double dVrep(const double r)
+         {
+             return (BETA + 2.0*GAMMA*r)*(-1.0*Vrep(r));
+         }
+
+         double d2Vrep(const double r)
+         {
+             double term1 = 2.0*GAMMA*r*r - 1;
+             double term2 = BETA*BETA + 4.0*BETA*GAMMA*r + 2.0*GAMMA*term1;
+             return term2*Vrep(r);
+         }
+
+         // Attractive part of potential (plus three-body interaction).
+         // Atomic units (r in Bohr; V in Hartree.)
+         double Vatt(const double r)
+         {
+             double ir = 1.0/r;
+             double ir6 = (ir*ir*ir)*(ir*ir*ir);
+             double ir8 = ir6*ir*ir;
+             double ir10 = ir8*ir*ir;
+             double ir9 = ir8*ir;
+             double attract = -(C6*ir6 + C8*ir8 + C10*ir10);
+             double threebody = C9*ir9;
+
+             return attract + threebody;
+         }
+
+         double dVatt(const double r)
+         {
+             double ir = 1.0/r;
+             double ir7 = (ir*ir*ir)*(ir*ir*ir*ir);
+             double ir9 = ir7*(ir*ir);
+             double ir10 = ir9*ir;
+             double ir11 = ir10*ir;
+
+             return 6.0*C6*ir7 + 8.0*C8*ir9 - 9.0*C9*ir10 + 10.0*C10*ir11;
+         }
+
+         double d2Vatt(const double r)
+         {
+             double term1 = 7*C6*r*r*r + 12*C8*r - 15*C9;
+             double numerator = 3.0*r*term1 + 55*C10;
+             double ir = 1.0/r;
+             double ir4 = ir*ir*ir*ir;
+             double ir12 = ir4*ir4*ir4;
+             return -1.0*numerator*ir12;
+         }
+ };
+
+
+ inline double SilveraPotential::V(const dVec &r)
+ {
+     return direct(lookupV,extV,sqrt(dot(r,r)));
+ }
+
+ inline dVec SilveraPotential::gradV(const dVec &r)
+ {
+     double rnorm = sqrt(dot(r,r));
+     dVec gV;
+     gV = (direct(lookupdVdr,extdVdr,rnorm)/rnorm)*r;
+     return gV;
+ }
+
+ inline double SilveraPotential::grad2V(const dVec &r)
+ {
+     double rnorm = sqrt(dot(r,r));
+     double g2V;
+     g2V = direct(lookupd2Vdr2,extd2Vdr2,rnorm);
+     return g2V;
+ }
+
+
+// ========================================================================
 // Szalewicz Potential Class
-// ========================================================================  
-/** 
+// ========================================================================
+/**
  * Computes the value of the semi-empircal Szalewicz potential that is known
  * to be accurate for He-4.
  */
@@ -837,8 +1034,8 @@ class SzalewiczPotential : public PotentialBase, public TabulatedPotential {
                                         1307674368000,
                                         20922789888000};
         /* Used to construct the lookup tables */
-        double valueV (const double);               
-        double valuedVdr (const double);                    
+        double valueV (const double);
+        double valuedVdr (const double);
         double valued2Vdr2 (const double);
 
         /* The Tang-Toennies damping function needed for the Szalewicz potential */
@@ -846,7 +1043,7 @@ class SzalewiczPotential : public PotentialBase, public TabulatedPotential {
         double fn(const double x, const int n) {
             double s1 = 0.0;
             for (int i = 0; i < n + 1; i++) {
-            s1 += pow(x,i)/factorials[i];           
+            s1 += pow(x,i)/factorials[i];
             }
             return 1.0 - (exp(-x)*s1);
         }
@@ -854,8 +1051,8 @@ class SzalewiczPotential : public PotentialBase, public TabulatedPotential {
         /* The derivative of the Tang-Toennies damping function needed for the Szalewicz potential */
         double dfn(const double x, const int n) {
             return (exp(-x)*pow(x,n)/factorials[n]);
-        }   
-     
+        }
+
         /* The 2nd derivative of the Tang-Toennies needed for the Szalewicz potential*/
         double d2fn(const double x, const int n) {
             return (exp(-x)*(n-x)*pow(x,(n-1))/factorials[n]);
@@ -865,10 +1062,10 @@ class SzalewiczPotential : public PotentialBase, public TabulatedPotential {
         /* needed for the Szalewicz potential */
         /* Can be described as upper incomplete gamma function. */
         double fn2(const double x, const int n) {
-        
+
             double s1 = 0.0;
             for (int i = 0; i < 17; i++) {
-                s1 += (pow(-1,i)*pow(x,(i+1)))/(factorials[i]*(n+i+1));         
+                s1 += (pow(-1,i)*pow(x,(i+1)))/(factorials[i]*(n+i+1));
             }
             s1 *= pow(x,n)/factorials[n];
             return s1;
@@ -880,8 +1077,8 @@ class SzalewiczPotential : public PotentialBase, public TabulatedPotential {
 // INLINE FUNCTION DEFINITIONS
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-/** 
- * Return the Szalewicz potential for separation r using a lookup table. 
+/**
+ * Return the Szalewicz potential for separation r using a lookup table.
  */
 inline double SzalewiczPotential::V(const dVec &r) {
     //double rnorm = sqrt(dot(r,r));
@@ -891,9 +1088,9 @@ inline double SzalewiczPotential::V(const dVec &r) {
 
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-/** 
- * Return the gradient of Szalewicz potential for separation r using a 
- * lookup table. 
+/**
+ * Return the gradient of Szalewicz potential for separation r using a
+ * lookup table.
  */
 inline dVec SzalewiczPotential::gradV(const dVec &r) {
     double rnorm = sqrt(dot(r,r));
@@ -905,9 +1102,9 @@ inline dVec SzalewiczPotential::gradV(const dVec &r) {
 
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-/** 
- * Return the Laplacian of Szalewicz potential for separation r using a 
- * lookup table. 
+/**
+ * Return the Laplacian of Szalewicz potential for separation r using a
+ * lookup table.
  */
 
 inline double SzalewiczPotential::grad2V(const dVec &r) {
@@ -919,10 +1116,10 @@ inline double SzalewiczPotential::grad2V(const dVec &r) {
     return g2V;
 }
 
-// ========================================================================  
+// ========================================================================
 // FixedAzizPotential Class
-// ========================================================================  
-/** 
+// ========================================================================
+/**
  * Computes the potential energy resulting from a series of fixed helium
  * atoms that are not updated and provide a static 'external' potential.
  *
@@ -943,7 +1140,7 @@ class FixedAzizPotential : public PotentialBase  {
         dVec gradV(const dVec &r);
 
         /** Initial configuration corresponding to FixedAziz potential */
-	blitz::Array<dVec,1> initialConfig(const Container*, MTRand &, const int); 
+	blitz::Array<dVec,1> initialConfig(const Container*, MTRand &, const int);
 
     private:
         AzizPotential aziz;                 // A copy of the aziz potential
@@ -957,10 +1154,10 @@ class FixedAzizPotential : public PotentialBase  {
 };
 
 #if NDIM > 2
-// ========================================================================  
+// ========================================================================
 // FixedPositionLJPotential Class
-// ========================================================================  
-/** 
+// ========================================================================
+/**
  * @brief Returns Lennard-Jones potential between adatoms and fixed postions in FILENAME.
  *
  * Author: Nathan Nichols
@@ -982,16 +1179,16 @@ class FixedPositionLJPotential: public PotentialBase  {
         double sigma;
         double epsilon;
         double Lz;
-        
+
 	blitz::Array <dVec,1> fixedParticles;      // The location of the fixed particles
         int numFixedParticles;              // The total number of fixed particles
 };
 #endif
 
 #if NDIM > 2
-// ========================================================================  
+// ========================================================================
 // Excluded Volume Class (volume excluded w/ large potential)
-// ========================================================================  
+// ========================================================================
 /**
  * Computes potential energy for Gasparini potential.
  * This is the case of gradV = 0 for all positions in cell.
@@ -1002,7 +1199,7 @@ class Gasparini_1_Potential : public PotentialBase {
         ~Gasparini_1_Potential ();
 
         /** The potential */
-        double V(const dVec &r){ 
+        double V(const dVec &r){
             double r2 = 0.0;
             if ((r[2] >= -excZ) && (r[2] <= excZ) && (r[1] >= -excY) && (r[1] <= excY))
                 r2 = 1.0*V0;
@@ -1015,12 +1212,12 @@ class Gasparini_1_Potential : public PotentialBase {
         /** Laplacian of the potential. */
         double grad2V(const dVec &r) { return 0.0; }
 
-    
+
         /** Initial configuration corresponding to FixedAziz potential */
-	blitz::Array<dVec,1> initialConfig(const Container*, MTRand &, const int); 
+	blitz::Array<dVec,1> initialConfig(const Container*, MTRand &, const int);
 
         /** get the exclusion lengths ay and az */
-	blitz::Array<double,1> getExcLen(); 
+	blitz::Array<double,1> getExcLen();
 
         /* parameters needed for Gasp Potential_1 */
         const double excZ;      //half amt. of exclusion (z)
@@ -1029,14 +1226,14 @@ class Gasparini_1_Potential : public PotentialBase {
 };
 #endif
 
-// ========================================================================  
+// ========================================================================
 // Hard Sphere Potential Class
-// ========================================================================  
-/** 
+// ========================================================================
+/**
  * Computes the effective potential from the exact two-body density matrix
- * for hard spheres in 3D.  
+ * for hard spheres in 3D.
  *
- * @see: S. Pilati, K. Sakkos, J. Boronat, J. Casulleras, and 
+ * @see: S. Pilati, K. Sakkos, J. Boronat, J. Casulleras, and
  *       S. Giorgini, Phys Rev A 74, 043621 (2006).
  */
 class HardSpherePotential : public PotentialBase  {
@@ -1045,7 +1242,7 @@ class HardSpherePotential : public PotentialBase  {
         ~HardSpherePotential ();
 
         /** The classical potential */
-        virtual double V(const dVec &r) { 
+        virtual double V(const dVec &r) {
             return ((sqrt(dot(r,r)) <= a) ? LBIG : 0.0);
         }
 
@@ -1065,23 +1262,23 @@ class HardSpherePotential : public PotentialBase  {
 /**
  * Computes the effective potential from the exact two-body density matrix
  * for delta interactions in 1D
- *       
+ *
  */
 class Delta1DPotential : public PotentialBase  {
 public:
     Delta1DPotential (double);
     ~Delta1DPotential ();
-    
+
     /** The classical potential */
     virtual double V(const dVec &r) {
         return (0.0);
     }
-    
+
     /** The effective potential */
     double V(const dVec &, const dVec &);
     double dVdlambda(const dVec &, const dVec &);
     double dVdtau(const dVec &, const dVec &);
-    
+
 private:
 
     double erfCO;   //cutoff of erfc for asymptotic form
@@ -1089,10 +1286,10 @@ private:
     double l0;      // The COM kinetic length scale: 2\sqrt{\lambda\tau}
     double xi;      // The ratio l0/li
     double li;      // The COM interaction length scale: 2\lambda/g
-    
+
     double xiSqOver2; // (xi^2)/2.0
     double xiSqrtPIOver2; // xi*\sqrt{\pi/2.0}
-    
+
     /** Interaction weight and derivatives **/
     double Wint(double yt, double dxt);
     double dWdyt(double yt, double dxt);
@@ -1101,12 +1298,12 @@ private:
 };
 
 
-// ========================================================================  
+// ========================================================================
 // Hard Rod Potential Class
-// ========================================================================  
-/** 
+// ========================================================================
+/**
  * Computes the effective potential from the exact two-body density matrix
- * for hard rods in 1D.  
+ * for hard rods in 1D.
  *
  */
 class HardRodPotential : public PotentialBase  {
@@ -1115,7 +1312,7 @@ class HardRodPotential : public PotentialBase  {
         ~HardRodPotential ();
 
         /** The classical potential */
-        virtual double V(const dVec &r) { 
+        virtual double V(const dVec &r) {
             return ((sqrt(dot(r,r)) <= a) ? LBIG : 0.0);
         }
 
@@ -1128,10 +1325,10 @@ class HardRodPotential : public PotentialBase  {
         double a;               // The strength of the delta function
 };
 
-// ========================================================================  
+// ========================================================================
 // Carbon Nanotube Potential Class
-// ========================================================================  
-/** 
+// ========================================================================
+/**
  * The smooth non-corregated version of the helium-carbon nanotube potential.
  * @see http://prb.aps.org/abstract/PRB/v62/i3/p2173_1
  */
@@ -1153,7 +1350,7 @@ class HardRodPotential : public PotentialBase  {
 //      dVec gradV(const dVec &);
 //
 //      /** Initial configuration corresponding to the CNT potential */
-//      Array<dVec,1> initialConfig(const Container*, MTRand &, const int); 
+//      Array<dVec,1> initialConfig(const Container*, MTRand &, const int);
 //
 //  private:
 //      /* All the parameters needed for the LJ wall potential */
@@ -1167,15 +1364,15 @@ class HardRodPotential : public PotentialBase  {
 //      double minV;    // The minimum value of the potential
 //
 //      /* Used to construct the lookup tables */
-//      double valueV (const double);               
-//      double valuedVdr (const double);                    
+//      double valueV (const double);
+//      double valuedVdr (const double);
 //};
 
 #if NDIM > 2
-// ========================================================================  
+// ========================================================================
 // GraphenePotential Class
-// ========================================================================  
-/** 
+// ========================================================================
+/**
  * \brief Returns van der Waals' potential between a helium adatom and a graphene sheet using summation in reciprocal space.
  *
  * Author: Nathan Nichols
@@ -1193,7 +1390,7 @@ class GraphenePotential: public PotentialBase  {
         double V(const dVec &r);
 
         /** Initial configuration corresponding to graphene-helium vdW potential */
-	blitz::Array<dVec,1> initialConfig(const Container*, MTRand &, const int); 
+	blitz::Array<dVec,1> initialConfig(const Container*, MTRand &, const int);
 
     private:
         double sigma;
@@ -1222,10 +1419,10 @@ class GraphenePotential: public PotentialBase  {
 #endif
 
 #if NDIM > 2
-// ========================================================================  
+// ========================================================================
 // GrapheneLUTPotential Class
-// ========================================================================  
-/** 
+// ========================================================================
+/**
  * \brief Returns van der Waals' potential between a helium adatom and a graphene sheet using summation in reciprocal space.
  *
  * Author: Nathan Nichols & Adrian Del Maestro
@@ -1245,9 +1442,9 @@ class GrapheneLUTPotential: public PotentialBase  {
         /* Return the gradient of the sum of the van der Waals' interaction energy between the supplied
          * particle and the fixed graphene lattice. */
         dVec gradV(const dVec &r);
-        
+
         /** Initial configuration corresponding to graphene-helium vdW potential */
-	blitz::Array<dVec,1> initialConfig(const Container*, MTRand &, const int); 
+	blitz::Array<dVec,1> initialConfig(const Container*, MTRand &, const int);
 
     private:
         double sigma;
@@ -1272,12 +1469,12 @@ class GrapheneLUTPotential: public PotentialBase  {
 
         double Lzo2;            ///< half the system size in the z-direction
         double Lz;              ///< The size of the system in the z-direction
-        double zWall;           ///< The location of the onset of the "hard" wall 
+        double zWall;           ///< The location of the onset of the "hard" wall
         double invWallWidth;    ///< How fast the wall turns on.
         double V_zmin;          ///< A large potential value used for the cutoff
-        
+
         double q = 2.0; // number of basis vectors
-        
+
         static const int gnum = 3;
         static const int gtot = 16; //pow(gnum + 1,2);
 
@@ -1290,7 +1487,7 @@ class GrapheneLUTPotential: public PotentialBase  {
         /* double garr [gtot]; */
 
 	blitz::Array<int,1> gMagID;    // g-magnitude lookup index
-        
+
         /* The lookup tables */
 	blitz::Array<double,2> vg;
 	blitz::Array<double,2> gradvg;
@@ -1298,10 +1495,10 @@ class GrapheneLUTPotential: public PotentialBase  {
 #endif
 
 #if NDIM > 2
-// ========================================================================  
+// ========================================================================
 // GrapheneLUT3DPotential Class
-// ========================================================================  
-/** 
+// ========================================================================
+/**
  * \brief Returns van der Waals' potential between a helium adatom and a graphene sheet using summation in reciprocal space.
  *
  * Author: Nathan Nichols
@@ -1322,10 +1519,10 @@ class GrapheneLUT3DPotential: public PotentialBase  {
          * particle and the fixed graphene lattice. */
         dVec gradV(const dVec &);
         double grad2V(const dVec &);
-        
+
         /** Initial configuration corresponding to graphene-helium vdW potential */
-	blitz::Array<dVec,1> initialConfig(const Container*, MTRand &, const int); 
-	blitz::Array<dVec,1> initialConfig1(const Container*, MTRand &, const int); 
+	blitz::Array<dVec,1> initialConfig(const Container*, MTRand &, const int);
+	blitz::Array<dVec,1> initialConfig1(const Container*, MTRand &, const int);
 
         void put_in_uc( dVec &, double, double);
         void cartesian_to_uc( dVec &, double, double, double, double);
@@ -1334,9 +1531,9 @@ class GrapheneLUT3DPotential: public PotentialBase  {
 
     private:
         double Lzo2;      ///< half the system size in the z-direction
-        double zWall;     ///< The location of the onset of the "hard" wall 
+        double zWall;     ///< The location of the onset of the "hard" wall
         double invWallWidth; ///< How fast the wall turns on.
-        
+
         /* spacing of the lookup tables */
         double dx;
         double dy;
@@ -1348,7 +1545,7 @@ class GrapheneLUT3DPotential: public PotentialBase  {
         double zmin;
         double zmax;
         double V_zmin;
-        
+
         /* transfer matrix */
         double A11;
         double A12;
@@ -1426,10 +1623,10 @@ inline double GrapheneLUT3DPotential::direct_lookup(blitz::Array<double,3> P,dVe
 #endif
 
 #if NDIM > 2
-// ========================================================================  
+// ========================================================================
 // GrapheneLUT3DPotentialGenerate Class
-// ========================================================================  
-/** 
+// ========================================================================
+/**
  * \brief FIXME Returns van der Waals' potential between a helium adatom and a graphene sheet using summation in reciprocal space.
  *
  * Author: Nathan Nichols
@@ -1443,11 +1640,11 @@ class GrapheneLUT3DPotentialGenerate: public PotentialBase  {
                 const double, const double, const double, const double,
                 const double, const int, const int, const int, const int, const Container*);
         ~GrapheneLUT3DPotentialGenerate();
-        
+
     private:
 
         double Lzo2;    // half the system size in the z-direction
-        
+
         /* resolution of the lookup tables */
         int xres;
         int yres;
@@ -1458,20 +1655,20 @@ class GrapheneLUT3DPotentialGenerate: public PotentialBase  {
         double zmax;
 	int k_max;
         /* double V_zmin; */
-        
+
         double Vz_64( double, double, double, int );
         double Vz_64( double, double, double );
         double Vz_64( double, double );
-        
+
         double gradVz_x_64( double, double, double, int );
         double gradVz_x_64( double, double, double );
         double gradVz_x_64( double, double );
-        
+
         double gradVz_y_64( double, double, double, int );
         double gradVz_y_64( double, double, double );
         double gradVz_y_64( double, double );
-        
-        
+
+
         double gradVz_z_64( double, double, double, int );
         double gradVz_z_64( double, double, double );
         double gradVz_z_64( double, double );
@@ -1479,12 +1676,12 @@ class GrapheneLUT3DPotentialGenerate: public PotentialBase  {
         double grad2Vz_64( double, double, double, int );
         double grad2Vz_64( double, double, double );
         double grad2Vz_64( double, double );
-        
+
         double Vg_64( double, double, double, double, double, double, double,
                 double, double, double );
         double Vg_64( double, double, double, double, double, double, double,
                 double, double );
-        
+
         double gradVg_x_64( double, double, double, double, double, double, double,
                 double, double, double );
         double gradVg_x_64( double, double, double, double, double, double, double,
@@ -1529,7 +1726,7 @@ class GrapheneLUT3DPotentialGenerate: public PotentialBase  {
                 blitz::TinyVector<double,2>, blitz::TinyVector<double,2>,
                 blitz::TinyVector<double,2>, blitz::TinyVector<double,2>, blitz::Array<int,1>,
                 blitz::Array<int,1>, blitz::Array<double,1> );
-        
+
         std::tuple<
             blitz::TinyVector<double,2>, blitz::TinyVector<double,2>,
             blitz::TinyVector<double,2>, blitz::TinyVector<double,2>,
@@ -1556,12 +1753,12 @@ class GrapheneLUT3DPotentialGenerate: public PotentialBase  {
         template <class T> double calculate_magnitude( T vec ) {
             return sqrt(dot(vec,vec));
         }
-        
+
         template <class T1, class T2> double calculate_angle(
                 T1 x, T2 y, double magnitude_x, double magnitude_y ) {
             return acos(dot(x,y)/magnitude_x/magnitude_y);
         }
-        
+
         template <class T1, class T2> double calculate_angle( T1 x, T2 y ) {
             return calculate_angle(x,y,calculate_magnitude(x),calculate_magnitude(y));
         }
@@ -1606,20 +1803,20 @@ class GrapheneLUT3DPotentialGenerate: public PotentialBase  {
                 blitz::Array<int,1>, blitz::Array<int,1>,
                 blitz::Array<double,1> );
 
-        std::pair<double, double> get_z_min_V_min( 
+        std::pair<double, double> get_z_min_V_min(
                 double, double, double, double, double,
                 blitz::TinyVector<double,2>, blitz::TinyVector<double,2>,
                 blitz::TinyVector<double,2>, blitz::TinyVector<double,2>,
                 blitz::Array<int,1>, blitz::Array<int,1>, blitz::Array<double,1> );
 
-        std::pair<double, double> get_z_V_to_find( 
+        std::pair<double, double> get_z_V_to_find(
                 double, double, double,
                 blitz::TinyVector<double,2>, blitz::TinyVector<double,2>,
                 blitz::TinyVector<double,2>, blitz::TinyVector<double,2>,
                 blitz::Array<int,1>, blitz::Array<int,1>, blitz::Array<double,1> );
 
 	blitz::Array<double,3> get_V3D(
-                double, double, double, int, int, int, double, double ); 
+                double, double, double, int, int, int, double, double );
         std::pair<blitz::Array<double,3> , blitz::Array<double,1>> get_V3D(
                 double, double, double, int, int, int, double );
         std::tuple<
