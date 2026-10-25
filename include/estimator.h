@@ -881,6 +881,33 @@ class MeanSquaredDisplacementEstimator : public EstimatorBase {
 };
 
 
+// ========================================================================
+// Potential Hessian Estimator Class
+// ========================================================================
+/**
+ * <F^2>, <nabla^2 V> and the squared Frobenius norm of the Hessian of the
+ * potential per particle, T_i = sum_j Tr(H_ij H_ji), from one pair loop.
+ * T_i is written as T_self = Tr(H_ii^2) and T_pair = sum_{j != i}
+ * Tr(H_ij H_ji).  Only pairs inside the potential cutoff are included,
+ * the same pairs as in the action.  To leading order,
+ * <F^2> - k_B T <nabla^2 V> = (lambda_T^2 / 24 pi) <T_self + T_pair>.
+ */
+class PotentialHessianEstimator : public EstimatorBase {
+
+    public:
+        PotentialHessianEstimator(const Path &, ActionBase *,
+                const MTRand &, double, int _frequency=1,
+                std::string _label="hessian");
+        ~PotentialHessianEstimator();
+
+        static const std::string name;
+        std::string getName() const { return name; }
+
+    private:
+        void accumulate();
+};
+
+
 
 // ========================================================================  
 // Static Structure Factor Estimator Class

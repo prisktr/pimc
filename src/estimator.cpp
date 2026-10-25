@@ -65,6 +65,7 @@ REGISTER_ESTIMATOR("radial density",RadialDensityEstimator);
 REGISTER_ESTIMATOR("bond orientational order", BondOrientationalOrderEstimator);
 REGISTER_ESTIMATOR("final state effects", FinalStateEffectsEstimator);
 REGISTER_ESTIMATOR("mean squared displacement", MeanSquaredDisplacementEstimator);
+REGISTER_ESTIMATOR("potential hessian", PotentialHessianEstimator);
 #if NDIM > 1
 REGISTER_ESTIMATOR("radial area rhos/rho",RadialAreaSuperfluidDensityEstimator);
 REGISTER_ESTIMATOR("planar area rhos/rho",PlaneAreaSuperfluidDensityEstimator);
@@ -3804,6 +3805,123 @@ void MeanSquaredDisplacementEstimator::accumulate()
 }
 
 
+
+
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// POTENTIAL HESSIAN ESTIMATOR CLASS -----------------------------------------
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
+/*************************************************************************//**
+ *  Constructor.
+******************************************************************************/
+PotentialHessianEstimator::PotentialHessianEstimator(
+        const Path &_path, ActionBase *_actionPtr,
+        const MTRand &_random, double _maxR,
+        int _frequency, std::string _label) :
+    EstimatorBase(_path, _actionPtr, _random, _maxR,
+                  _frequency, _label)
+{
+    initialize(4);
+
+    header = str(format("#%15s%16s%16s%16s")
+            % "F2" % "lapV" % "T_self" % "T_pair");
+}
+
+PotentialHessianEstimator::~PotentialHessianEstimator() { }
+
+
+/*************************************************************************//**
+ *  Accumulate one measurement of <F^2>, <nabla^2 V> and the Hessian norm.
+ *
+ *  For a pair potential V = sum_{i<j} v(r_ij), the NDIM x NDIM block of
+ *  the Hessian for one pair is
+ *
+ *      D_ij = v''(r) rhat rhat + (v'(r)/r) (1 - rhat rhat),
+ *
+ *  with H_ij = -D_ij (j != i) and H_ii = sum_{j != i} D_ij.  Per particle
+ *
+ *      F_i    = sum_j v'(r) rhat
+ *      L_i    = Tr H_ii = sum_j [v'' + (NDIM-1) v'/r]
+ *      T_self = Tr(H_ii^2)                  (H_ii accumulated as a matrix)
+ *      T_pair = sum_j Tr(D_ij^2) = sum_j [v''^2 + (NDIM-1) (v'/r)^2]
+ *
+ *  so T_self + T_pair = sum_j Tr(H_ij H_ji), the sum of the squares of all
+ *  second derivatives involving a coordinate of particle i.  The full
+ *  (N NDIM)^2 matrix is never formed.  v'(r)/r is recovered from
+ *  gradV . rij / r^2.
+ *
+ *  Only pairs with r < r_c are included, as in the action's interaction
+ *  list, and only every period-th slice, as for other diagonal
+ *  estimators.  Complexity per measurement: O(N^2 M / period).
+******************************************************************************/
+void PotentialHessianEstimator::accumulate()
+{
+    const int M = path.numTimeSlices;
+    const int N = path.getTrueNumParticles();
+    PotentialBase *vptr = actionPtr->interactionPtr;
+    const int period = actionPtr->period;
+    const double rc2 = constants()->rc2();
+
+    double F2_sum  = 0.0;
+    double lap_sum = 0.0;
+    double Ts_sum  = 0.0;
+    double Tp_sum  = 0.0;
+    int numSlices  = 0;
+
+    for (int s = 0; s < M; s += period) {
+        for (int i = 0; i < N; ++i) {
+            beadLocator bi = {s, i};
+            dVec   Fi{};                    // net force on particle i
+            double Li = 0.0;                // Tr H_ii
+            double Tp = 0.0;                // sum_j Tr(D_ij^2)
+            double Hii[NDIM][NDIM] = {};    // H_ii = sum_j D_ij
+
+            for (int j = 0; j < N; ++j) {
+                if (j == i) continue;
+                beadLocator bj = {s, j};
+                dVec rij = path.getSeparation(bi, bj);
+                double r2 = dot(rij, rij);
+                if (r2 >= rc2) continue;            // same pairs as action
+
+                dVec gV   = vptr->gradV(rij);       // v'(r) rhat
+                double d2 = vptr->grad2V(rij);      // v''(r)
+                double v1r = dot(gV, rij) / r2;     // v'(r)/r
+
+                Fi += gV;
+                Li += d2 + (NDIM - 1) * v1r;
+                Tp += d2 * d2 + (NDIM - 1) * v1r * v1r;
+
+                /* D_ij = (v'' - v'/r) rij rij^T / r^2 + (v'/r) 1 */
+                double c = (d2 - v1r) / r2;
+                for (int a = 0; a < NDIM; ++a) {
+                    for (int b = 0; b < NDIM; ++b)
+                        Hii[a][b] += c * rij[a] * rij[b];
+                    Hii[a][a] += v1r;
+                }
+            }
+
+            /* Tr(H_ii^2) = sum_ab H_ab^2, since H_ii is symmetric */
+            double Ts = 0.0;
+            for (int a = 0; a < NDIM; ++a)
+                for (int b = 0; b < NDIM; ++b)
+                    Ts += Hii[a][b] * Hii[a][b];
+
+            F2_sum  += dot(Fi, Fi);
+            lap_sum += Li;
+            Ts_sum  += Ts;
+            Tp_sum  += Tp;
+        }
+        ++numSlices;
+    }
+
+    const double denom = double(N) * double(numSlices);
+    estimator(0) += F2_sum  / denom;
+    estimator(1) += lap_sum / denom;
+    estimator(2) += Ts_sum  / denom;
+    estimator(3) += Tp_sum  / denom;
+}
 
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
