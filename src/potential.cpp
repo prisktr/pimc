@@ -76,6 +76,7 @@ REGISTER_INTERACTION_POTENTIAL(       "aziz",       AzizPotential, GET_SETUP(), 
 REGISTER_INTERACTION_POTENTIAL(    "silvera",    SilveraPotential, GET_SETUP(), setup.get_cell())
 REGISTER_INTERACTION_POTENTIAL(  "patkowski",  PatkowskiPotential, GET_SETUP(), setup.get_cell())
 REGISTER_INTERACTION_POTENTIAL(       "H2LJ",                H2LJ, GET_SETUP(), setup.get_cell())
+REGISTER_INTERACTION_POTENTIAL("XeLJ",                       XeLJ, GET_SETUP(), setup.get_cell())
 REGISTER_INTERACTION_POTENTIAL(  "szalewicz",  SzalewiczPotential, GET_SETUP(), setup.get_cell())
 REGISTER_INTERACTION_POTENTIAL(   "harmonic",   HarmonicPotential, GET_SETUP(), setup.params["omega"].as<double>())
 REGISTER_INTERACTION_POTENTIAL(     "dipole",     DipolePotential,  NO_SETUP())
@@ -2002,6 +2003,73 @@ H2LJ::H2LJ(const Container *_boxPtr) : PotentialBase(), TabulatedPotential()
          return (4.0*EPSILON)*(12.0*13.0*ix12 - 6.0*7.0*ix6)*ir2;
       }
  }
+
+//
+// Xenon Lennard-Jones potential class.
+//
+XeLJ::XeLJ(const Container *_boxPtr) : PotentialBase(), TabulatedPotential()
+{
+    EPSILON = 227.55;  // K 
+    SIGMA   = 3.949;   // A
+    
+    extV.fill(0.0);
+    extdVdr.fill(0.0);
+    extd2Vdr2.fill(0.0);
+
+    // Lookup table.
+    double L = _boxPtr->maxSep;
+    initLookupTable(0.00005 * SIGMA, L);
+
+    // Tail correction.
+    double rc   = constants()->rc();
+    double rat  = SIGMA / rc;
+    double rat3 = rat * rat * rat;
+    double rat9 = rat3 * rat3 * rat3;
+    double term = (1.0/3.0) * rat9 - rat3;
+    double prefactor = (8.0/3.0) * M_PI * EPSILON
+                     * (SIGMA * SIGMA * SIGMA);
+    tailV = prefactor * term;
+}
+
+XeLJ::~XeLJ() { }
+
+// V(r) = 4 eps [ (sigma/r)^12 - (sigma/r)^6 ] 
+inline __attribute__((always_inline))
+double XeLJ::valueV(const double r) {
+    double x = r / SIGMA;
+    if (x < EPS) return 0.0;
+
+    double ix2  = 1.0 / (x * x);
+    double ix6  = ix2 * ix2 * ix2;
+    double ix12 = ix6 * ix6;
+    return (4.0 * EPSILON) * (ix12 - ix6);
+}
+
+// dV/dr = 4 eps [ -12 (sigma/r)^12 + 6 (sigma/r)^6 ] / r */
+inline __attribute__((always_inline))
+double XeLJ::valuedVdr(const double r) {
+    double x = r / SIGMA;
+    if (x < EPS) return 0.0;
+
+    double ir   = 1.0 / r;
+    double ix2  = 1.0 / (x * x);
+    double ix6  = ix2 * ix2 * ix2;
+    double ix12 = ix6 * ix6;
+    return (4.0 * EPSILON) * (-12.0 * ix12 + 6.0 * ix6) * ir;
+}
+
+// d^2V/dr^2 = 4 eps [12*13 (sigma/r)^12 - 6*7 (sigma/r)^6] / r^2 
+inline __attribute__((always_inline))
+double XeLJ::valued2Vdr2(const double r) {
+    double x = r / SIGMA;
+    if (x < EPS) return 0.0;
+
+    double ir2  = 1.0 / (r * r);
+    double ix2  = 1.0 / (x * x);
+    double ix6  = ix2 * ix2 * ix2;
+    double ix12 = ix6 * ix6;
+    return (4.0 * EPSILON) * (12.0 * 13.0 * ix12 - 6.0 * 7.0 * ix6) * ir2;
+}
 
 
  // Silvera-Goldman potential class.

@@ -1069,6 +1069,51 @@ class H2LJ : public PotentialBase, public TabulatedPotential<H2LJ>
  }
 
 
+
+// ========================================================================
+// Xenon Lennard-Jones Potential Class
+// ========================================================================
+// 
+// Parameters taken from Vrabec et al. J. Phys. Chem. B 105, 12126 (2001).
+//
+class XeLJ : public PotentialBase, public TabulatedPotential<XeLJ>
+{
+    public:
+        XeLJ (const Container *);
+        ~XeLJ ();
+        /* Value + gradient + Laplacian of the Xe LJ potential */
+        inline __attribute__((always_inline)) double V(const dVec &);
+        inline __attribute__((always_inline)) dVec  gradV(const dVec &);
+        inline __attribute__((always_inline)) double grad2V(const dVec &);
+        /* Used to construct the lookup tables */
+        inline __attribute__((always_inline)) double valueV (const double);
+        inline __attribute__((always_inline)) double valuedVdr (const double);
+        inline __attribute__((always_inline)) double valued2Vdr2 (const double);
+    private:
+        double EPSILON, SIGMA;
+};
+
+inline __attribute__((always_inline))
+double XeLJ::V(const dVec &r) {
+    return direct(lookupV, extV, sqrt(dot(r,r)));
+}
+
+inline __attribute__((always_inline))
+dVec XeLJ::gradV(const dVec &r) {
+    double rnorm = sqrt(dot(r,r));
+    dVec gV;
+    gV = (direct(lookupdVdr, extdVdr, rnorm) / rnorm) * r;
+    return gV;
+}
+
+inline __attribute__((always_inline))
+double XeLJ::grad2V(const dVec &r) {
+    double rnorm = sqrt(dot(r,r));
+    return direct(lookupd2Vdr2, extd2Vdr2, rnorm);
+}
+
+
+
  // ========================================================================
  // Silvera-Goldman Potential Class
  // ========================================================================
