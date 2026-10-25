@@ -7,8 +7,9 @@
  */
 
 #include "common.h"
+#include <complex>      // std::complex in BondOrientationalOrderEstimator
 
-#ifndef ESTIMATOR_H 
+#ifndef ESTIMATOR_H
 #define ESTIMATOR_H
 
 #ifdef USE_GPU
@@ -851,6 +852,31 @@ class FinalStateEffectsEstimator : public EstimatorBase {
                 double &, double &);
 
     private:
+        void accumulate();
+};
+
+// ========================================================================
+// Mean Squared Displacement Estimator Class
+// ========================================================================
+/**
+ * Mean squared displacement of each particle from its lattice site, for
+ * the Debye-Waller factor exp(-Q^2 <u^2>/3) and the Lindemann ratio.
+ */
+class MeanSquaredDisplacementEstimator : public EstimatorBase {
+
+    public:
+        MeanSquaredDisplacementEstimator(const Path &, 
+            ActionBase *,
+            const MTRand &, 
+            double, int _frequency=1,
+            std::string _label="msd");
+        ~MeanSquaredDisplacementEstimator();
+
+        static const std::string name;
+        std::string getName() const { return name; }
+
+    private:
+        DynamicArray<dVec,1> sites;     // lattice sites R_i [A]
         void accumulate();
 };
 

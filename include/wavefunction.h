@@ -169,4 +169,40 @@ class SutherlandWaveFunction: public WaveFunctionBase {
         double pioL;            // pi / L
 };
 
+// ========================================================================
+// BruceWaveFunction Class
+// ========================================================================
+/**
+ * Implementation of Nosanow-Jastrow trial wavefunction for a quantum crystal.
+ * See: T. A. Bruce, Phys. Rev. B 5, 4170 (1972), Eq. (2.7). */
+class BruceWaveFunction: public WaveFunctionBase {
+
+    public:
+        BruceWaveFunction(const Path &, LookupTable &_lookup);
+        ~BruceWaveFunction();
+
+        double PsiTrial(const int slice) {
+            return exp(logPsi(slice) - lnPsiRef);
+        }
+        double PsiTrial(const beadLocator &b) { return PsiTrial(b[0]); }
+
+        static const std::string name;
+        std::string getName() const {return name;}
+
+    private:
+        double A;                       ///< Gaussian width [A^-2]
+        double B5;                      ///< B^5, B in units of [A]
+        double rc;                      ///< Cutoff [A]
+        double frc;                     ///< 2 rc^-5 (the constant shift)
+        double lnPsiRef;                ///< ln Psi_T on an ideal lattice
+        DynamicArray<dVec,1> sites;     ///< lattice sites R_i [A]
+
+        double logPsi(const int slice); ///< ln Psi_T on one time step
+
+        double f(const double r) const {
+            if (r >= rc) return 0.0;
+            return pow(r,-5.0) + pow(2.0*rc - r,-5.0) - frc;
+        }
+};
+
 #endif

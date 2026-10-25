@@ -9,6 +9,8 @@
 #include "wavefunction.h"
 #include "path.h"
 #include "factory.h"
+#include "setup.h"      // Setup::instance().params["xyz"] (Bruce sites)
+#include "xyz_io.h"     // readXYZFile
 
 /**************************************************************************//**
  * Setup the WaveFunction factory.
@@ -30,6 +32,7 @@ WaveFunctionFactory waveFunctionFactory;
 REGISTER_WAVEFUNCTION("constant",ConstantWaveFunction)
 REGISTER_WAVEFUNCTION("sho_sech",SechWaveFunction)
 REGISTER_WAVEFUNCTION("jastrow",JastrowWaveFunction)
+REGISTER_WAVEFUNCTION("bruce",BruceWaveFunction)
 REGISTER_WAVEFUNCTION("lieb_liniger",LiebLinigerWaveFunction)
 REGISTER_WAVEFUNCTION("sutherland",SutherlandWaveFunction)
 
@@ -448,4 +451,78 @@ double SutherlandWaveFunction::PsiTrial(const int slice) {
     } // bead1
 
     return psiT;
+}
+
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// BRUCE WAVEFUNCTION CLASS --------------------------------------------------
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
+/**************************************************************************//**
+* Constructor.
+******************************************************************************/
+BruceWaveFunction::BruceWaveFunction(const Path &_path, LookupTable &_lookup) :
+    WaveFunctionBase(_path,_lookup)
+{
+    
+    // Variational parameters for solid para-tritium with Silvera potential.
+    A  = 4.502;                 // [A^-2]
+    const double B = 3.542;     // [A]
+    B5 = pow(B,5.0);
+
+    // Cutoff.
+    rc = 0.5*path.boxPtr->side[0];
+    for (int d = 1; d < NDIM; d++)
+        rc = std::min(rc, 0.5*path.boxPtr->side[d]);
+    frc = 2.0*pow(rc,-5.0);
+
+    // Lattice sites are taken from the .xyz file.
+    const std::string xyzFile =
+        Setup::instance().params["xyz"].as<std::string>();
+    if (xyzFile.empty())
+        throw std::runtime_error("bruce wavefunction: needs --xyz "
+                                 "(the lattice sites)");
+    sites = readXYZFile(xyzFile, path.boxPtr);
+    if (int(sites.size()) != path.getNumParticles())
+        throw std::runtime_error("bruce wavefunction: xyz site count "
+                                 "differs from the number of particles");
+
+    // Reference: ln Psi_T on the perfect lattice (all r_i = R_i).
+    double jast = 0.0;
+    const int N = sites.size();
+    for (int i = 0; i < N; i++) {
+        for (int j = i+1; j < N; j++) {
+            dVec sep = sites(i) - sites(j);
+            path.boxPtr->putInBC(sep);
+            jast += f(sqrt(dot(sep,sep)));
+        }
+    }
+    lnPsiRef = -0.5*B5*jast;
+}
+
+/**************************************************************************//**
+ * Destructor.
+******************************************************************************/
+BruceWaveFunction::~BruceWaveFunction() {
+}
+
+double BruceWaveFunction::logPsi(const int slice) {
+
+    const int N = path.numBeadsAtSlice(slice);
+    double gauss = 0.0;     // sum_i |r_i - R_i|^2  (minimum image)
+    double jast  = 0.0;     // sum_{i<j} f(r_ij)
+    beadLocator b1, b2;
+    b1[0] = b2[0] = slice;
+
+    for (b1[1] = 0; b1[1] < N; b1[1]++) {
+        dVec d = path(b1) - sites(b1[1]);
+        path.boxPtr->putInBC(d);
+        gauss += dot(d,d);
+        for (b2[1] = b1[1]+1; b2[1] < N; b2[1]++) {
+            dVec sep = path.getSeparation(b1,b2);
+            jast += f(sqrt(dot(sep,sep)));
+        }
+    }
+    return -0.5*A*gauss - 0.5*B5*jast;
 }

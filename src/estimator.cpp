@@ -11,6 +11,8 @@
 #include "potential.h"
 #include "communicator.h"
 #include "factory.h"
+#include "setup.h"      
+#include "xyz_io.h"     
 #include <complex>
 #include <queue>
 #include <array>
@@ -62,6 +64,7 @@ REGISTER_ESTIMATOR("intermediate scattering function",IntermediateScatteringFunc
 REGISTER_ESTIMATOR("radial density",RadialDensityEstimator);
 REGISTER_ESTIMATOR("bond orientational order", BondOrientationalOrderEstimator);
 REGISTER_ESTIMATOR("final state effects", FinalStateEffectsEstimator);
+REGISTER_ESTIMATOR("mean squared displacement", MeanSquaredDisplacementEstimator);
 #if NDIM > 1
 REGISTER_ESTIMATOR("radial area rhos/rho",RadialAreaSuperfluidDensityEstimator);
 REGISTER_ESTIMATOR("planar area rhos/rho",PlaneAreaSuperfluidDensityEstimator);
@@ -3484,13 +3487,25 @@ void BondOrientationalOrderEstimator::computeQValues(
 }
 
 
-/*************************************************************************//**
- *  Compute the centroid of the ring polymer that begins at slice 0,
- *  particle p, by walking path.next() for numTimeSlices steps and
- *  accumulating positions while unwrapping minimum-image jumps.
-******************************************************************************/
 dVec BondOrientationalOrderEstimator::computeCentroid(int p)
 {
+#if PIGS
+    const int period = actionPtr->period;
+    beadLocator b0 = {startSlice, p};
+    const dVec ref = path(b0);
+    dVec sum{};
+    double wsum = 0.0;
+    for (int s = startSlice; s < endDiagSlice; ++s) {
+        if (s % period) continue;
+        beadLocator b = {s, p};
+        const dVec dr = path.getSeparation(b, b0);   // r(b) - r(b0)
+        sum  += sliceFactor[s]*(ref + dr);
+        wsum += sliceFactor[s];
+    }
+    sum /= wsum;
+    path.boxPtr->putInside(sum);
+    return sum;
+#else
     const int M = path.numTimeSlices;
     beadLocator bead = {0, p};
     dVec abs_pos = path(bead);
@@ -3506,6 +3521,7 @@ dVec BondOrientationalOrderEstimator::computeCentroid(int p)
     sum /= (double)M;
     path.boxPtr->putInside(sum);   // wrap centroid back to [-L/2, L/2]
     return sum;
+#endif
 }
 
 
@@ -3523,6 +3539,30 @@ void BondOrientationalOrderEstimator::accumulate()
     // supercell-averaged q's, and accumulate.
     std::vector<dVec> positions(N);
     double q4_s = 0, q6_s = 0, qbar4_s = 0, qbar6_s = 0;
+#if PIGS
+    (void)M;
+    const int period = actionPtr->period;
+    double wsum = 0.0;
+    for (int s = startSlice; s < endDiagSlice; ++s) {
+        if (s % period) continue;
+        const double w = sliceFactor[s];
+        for (int p = 0; p < N; ++p) {
+            beadLocator bead = {s, p};
+            positions[p] = path(bead);
+        }
+        double a4, a6, b4, b6;
+        computeQValues(positions, a4, a6, b4, b6);
+        q4_s    += w*a4;
+        q6_s    += w*a6;
+        qbar4_s += w*b4;
+        qbar6_s += w*b6;
+        wsum    += w;
+    }
+    q4_s    /= wsum;
+    q6_s    /= wsum;
+    qbar4_s /= wsum;
+    qbar6_s /= wsum;
+#else
     for (int s = 0; s < M; ++s) {
         /* Gather positions at this slice.  In a closed-worm config
          * the number of beads per slice equals N. */
@@ -3541,6 +3581,7 @@ void BondOrientationalOrderEstimator::accumulate()
     q6_s    /= (double)M;
     qbar4_s /= (double)M;
     qbar6_s /= (double)M;
+#endif
 
     // CENTROID: trace each ring polymer to get the imag-time-averaged
     // position of each particle.
@@ -3648,6 +3689,20 @@ void FinalStateEffectsEstimator::accumulate()
 
     double F2_sum  = 0.0;
     double lap_sum = 0.0;
+
+#if PIGS
+    (void)M;
+    double wsum = 0.0;
+    for (int s = startSlice; s < endDiagSlice; ++s) {
+        if (s % period) continue;
+        double F2, lap;
+        sliceSums(path, vptr, s, F2, lap);
+        F2_sum  += sliceFactor[s]*F2;
+        lap_sum += sliceFactor[s]*lap;
+        wsum    += sliceFactor[s];
+    }
+    const double denom = double(N) * wsum;
+#else
     int numSlices  = 0;
 
     for (int s = 0; s < M; s += period) {
@@ -3659,8 +3714,93 @@ void FinalStateEffectsEstimator::accumulate()
     }
 
     const double denom = double(N) * double(numSlices);
+#endif
     estimator(0) += F2_sum  / denom;
     estimator(1) += lap_sum / denom;
+}
+
+
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// MEAN SQUARED DISPLACEMENT ESTIMATOR CLASS ---------------------------------
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
+/*************************************************************************//**
+ *  Constructor
+******************************************************************************/
+MeanSquaredDisplacementEstimator::MeanSquaredDisplacementEstimator(
+        const Path &_path, ActionBase *_actionPtr,
+        const MTRand &_random, double _maxR,
+        int _frequency, std::string _label) :
+    EstimatorBase(_path, _actionPtr, _random, _maxR,
+                  _frequency, _label)
+{
+    initialize(6);
+
+    header = str(format("#%15s%16s%16s%16s%16s%16s")
+            % "u2" % "ux2" % "uy2" % "uz2" % "u4" % "D2");
+
+    // Equilibrium lattice positions are determined from the .xyz file.
+    const std::string xyzFile =
+        Setup::instance().params["xyz"].as<std::string>();
+    if (xyzFile.empty())
+        throw std::runtime_error("mean squared displacement: needs "
+                                 "--xyz (the lattice sites)");
+    sites = readXYZFile(xyzFile, path.boxPtr);
+    if (int(sites.size()) != path.getNumParticles())
+        throw std::runtime_error("mean squared displacement: xyz site "
+                                 "count differs from the particle number");
+}
+
+// Destructor.
+MeanSquaredDisplacementEstimator::~MeanSquaredDisplacementEstimator() { }
+
+// Measurements.
+void MeanSquaredDisplacementEstimator::accumulate()
+{
+    const int N = path.getTrueNumParticles();
+    const int period = actionPtr->period;
+    std::vector<dVec> d(N);
+    std::array<double,6> acc{};
+    double wsum = 0.0;
+
+#if PIGS
+    const int s0 = startSlice, s1 = endDiagSlice;
+#else
+    const int s0 = 0, s1 = path.numTimeSlices;
+#endif
+    for (int s = s0; s < s1; ++s) {
+        if (s % period) continue;
+        const double w = sliceFactor[s];    
+
+        // Displacements from lattice sites.
+        dVec D{};
+        for (int i = 0; i < N; ++i) {
+            beadLocator b = {s, i};
+            d[i] = path(b) - sites(i);
+            path.boxPtr->putInBC(d[i]);
+            D += d[i];
+        }
+        D /= double(N);
+
+        // Moments of the displacmeent: u = r - D.
+        std::array<double,5> m{};
+        for (int i = 0; i < N; ++i) {
+            const dVec u = d[i] - D;
+            const double u2 = dot(u,u);
+            m[0] += u2;
+            for (int k = 0; k < NDIM; ++k)
+                m[1+k] += u[k]*u[k];
+            m[4] += u2*u2;
+        }
+        for (int k = 0; k < 5; ++k)
+            acc[k] += w*m[k]/double(N);
+        acc[5] += w*dot(D,D);
+        wsum += w;
+    }
+    for (int k = 0; k < 6; ++k)
+        estimator(k) += acc[k]/wsum;
 }
 
 
