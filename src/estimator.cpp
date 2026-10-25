@@ -3603,45 +3603,62 @@ FinalStateEffectsEstimator::~FinalStateEffectsEstimator() { }
  *
  *  Complexity per measurement: O(N^2 M). 
 ******************************************************************************/
+void FinalStateEffectsEstimator::sliceSums(const Path &path,
+        PotentialBase *vptr, const int slice, double &F2, double &lap)
+{
+    const int N = path.getTrueNumParticles();
+    F2  = 0.0;
+    lap = 0.0;
+
+    for (int i = 0; i < N; ++i) {
+        beadLocator bi = {slice, i};
+        dVec   Fi{};       // net force on particle i (vector)
+        double Li = 0.0;   // 3D Laplacian at particle i
+
+        for (int j = 0; j < N; ++j) {
+            if (j == i) continue;
+            beadLocator bj = {slice, j};
+            dVec rij = path.getSeparation(bi, bj);
+            dVec gV  = vptr->gradV(rij);    // = v'(r) * rhat
+
+            /* Full Laplacian = d^2V/dr^2 + 2 v'(r)/r.  The
+             * radial second derivative is what grad2V() returns;
+             * the geometric piece 2 v'(r)/r is recovered from
+             * (gV . rij) / r^2 = v'(r) / r. */
+            double r2 = dot(rij, rij);
+            double lap_ij = vptr->grad2V(rij)
+                          + 2.0 * dot(gV, rij) / r2;
+
+            Fi += gV;
+            Li += lap_ij;
+        }
+
+        F2  += dot(Fi, Fi);
+        lap += Li;
+    }
+}
+
 void FinalStateEffectsEstimator::accumulate()
 {
     const int M = path.numTimeSlices;
     const int N = path.getTrueNumParticles();
     PotentialBase *vptr = actionPtr->interactionPtr;
 
+    const int period = actionPtr->period;
+
     double F2_sum  = 0.0;
     double lap_sum = 0.0;
+    int numSlices  = 0;
 
-    for (int s = 0; s < M; ++s) {
-        for (int i = 0; i < N; ++i) {
-            beadLocator bi = {s, i};
-            dVec   Fi{};       // net force on particle i (vector)
-            double Li = 0.0;   // 3D Laplacian at particle i
-
-            for (int j = 0; j < N; ++j) {
-                if (j == i) continue;
-                beadLocator bj = {s, j};
-                dVec rij = path.getSeparation(bi, bj);
-                dVec gV  = vptr->gradV(rij);    // = v'(r) * rhat
-
-                /* Full Laplacian = d^2V/dr^2 + 2 v'(r)/r.  The
-                 * radial second derivative is what grad2V() returns;
-                 * the geometric piece 2 v'(r)/r is recovered from
-                 * (gV . rij) / r^2 = v'(r) / r. */
-                double r2 = dot(rij, rij);
-                double lap_ij = vptr->grad2V(rij)
-                              + 2.0 * dot(gV, rij) / r2;
-
-                Fi += gV;
-                Li += lap_ij;
-            }
-
-            F2_sum  += dot(Fi, Fi);
-            lap_sum += Li;
-        }
+    for (int s = 0; s < M; s += period) {
+        double F2, lap;
+        sliceSums(path, vptr, s, F2, lap);
+        F2_sum  += F2;
+        lap_sum += lap;
+        ++numSlices;
     }
 
-    const double denom = double(N) * double(M);
+    const double denom = double(N) * double(numSlices);
     estimator(0) += F2_sum  / denom;
     estimator(1) += lap_sum / denom;
 }

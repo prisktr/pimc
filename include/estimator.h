@@ -17,6 +17,7 @@
 
 class Path;
 class ActionBase;
+class PotentialBase;
 class Potential;
 
 // ========================================================================  
@@ -845,6 +846,9 @@ class FinalStateEffectsEstimator : public EstimatorBase {
 
         static const std::string name;
         std::string getName() const { return name; }
+
+        static void sliceSums(const Path &, PotentialBase *, const int,
+                double &, double &);
 
     private:
         void accumulate();
