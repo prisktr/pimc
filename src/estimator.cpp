@@ -62,6 +62,7 @@ REGISTER_ESTIMATOR("intermediate scattering function",IntermediateScatteringFunc
 REGISTER_ESTIMATOR("radial density",RadialDensityEstimator);
 REGISTER_ESTIMATOR("bond orientational order", BondOrientationalOrderEstimator);
 REGISTER_ESTIMATOR("final state effects", FinalStateEffectsEstimator);
+REGISTER_ESTIMATOR("potential hessian", PotentialHessianEstimator);
 #if NDIM > 1
 REGISTER_ESTIMATOR("radial area rhos/rho",RadialAreaSuperfluidDensityEstimator);
 REGISTER_ESTIMATOR("planar area rhos/rho",PlaneAreaSuperfluidDensityEstimator);
@@ -3578,75 +3579,423 @@ FinalStateEffectsEstimator::FinalStateEffectsEstimator(
     EstimatorBase(_path, _actionPtr, _random, _maxR,
                   _frequency, _label)
 {
-    initialize(2);
+    initialize(NCOL);
 
-    header = str(format("#%15s%16s") % "F2" % "lapV");
+    header = str(format("#%15s%16s%16s%16s%16s%16s%16s%16s%16s%16s%16s"
+                        "%16s%16s")
+            % "F2" % "lapV" % "T_self" % "T_pair" % "k2" % "kVaak"
+            % "kF2k" % "Vaa2" % "VaVaaa" % "Vaaaa" % "uu" % "D2" % "GdD");
+
+    // This estimator is configured for either primitive or gsf actions.
+    const std::string act = constants()->actionType();
+    if (act == "primitive")
+        cFactor = 1.0;
+    else if (act == "gsf")
+        cFactor = 2.0 / 3.0;
+    else {
+        std::cerr << "final state effects: action " << act
+                  << " not supported (primitive or gsf)." << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+// PIGS is not currently implemented.
+#if PIGS
+    std::cerr << "final state effects: not available for PIGS."
+              << std::endl;
+    exit(EXIT_FAILURE);
+#endif
+
+    // External derivatives.
+    hasExternal =
+        (dynamic_cast<FreePotential *>(actionPtr->externalPtr) == nullptr);
 }
 
 FinalStateEffectsEstimator::~FinalStateEffectsEstimator() { }
 
 
-/*************************************************************************//**
- *  Accumulate one measurement of <F^2> and <nabla^2 V>.
- *
- *  For each imaginary-time slice s and each particle i, form the
- *  net force vector and the 3D Laplacian as explicit pair sums
- *
- *      F_i = sum_{j != i} gradV(r_ij)
- *      L_i = sum_{j != i} [ d^2V/dr^2(r_ij) + 2/r_ij dV/dr(r_ij) ]
- *
- *  where gradV returns the gradient vector v'(r) * rhat and
- *  grad2V returns the radial second derivative v''(r).  The
- *  geometric piece 2 v'(r)/r is reconstructed using the identity
- *
- *      gradV . rij / r^2  =  v'(r) rhat . rij / r^2  =  v'(r)/r.
- *
- *  Complexity per measurement: O(N^2 M). 
-******************************************************************************/
 void FinalStateEffectsEstimator::accumulate()
 {
     const int M = path.numTimeSlices;
     const int N = path.getTrueNumParticles();
-    PotentialBase *vptr = actionPtr->interactionPtr;
 
-    double F2_sum  = 0.0;
-    double lap_sum = 0.0;
 
-    for (int s = 0; s < M; ++s) {
-        for (int i = 0; i < N; ++i) {
-            beadLocator bi = {s, i};
-            dVec   Fi{};       // net force on particle i (vector)
-            double Li = 0.0;   // 3D Laplacian at particle i
+    const int period = actionPtr->period; // Measured slices. =1 for primitive;
+                                          // =2 for GSF.
+    const double rc2 = constants()->rc2(); // Cut-off squared.
+    const double tau = constants()->tau(); // Time step.
+    const double twoLamTau = 2.0 * constants()->lambda() * tau;
+    const double cTau = cFactor * tau; // c = 1 primitive, 2/3 gsf.
 
-            for (int j = 0; j < N; ++j) {
-                if (j == i) continue;
-                beadLocator bj = {s, j};
-                dVec rij = path.getSeparation(bi, bj);
-                dVec gV  = vptr->gradV(rij);    // = v'(r) * rhat
+    double acc[NCOL] = {}; // Sums.
+    int numSlices = 0; // Number of measured slices.
 
-                /* Full Laplacian = d^2V/dr^2 + 2 v'(r)/r.  The
-                 * radial second derivative is what grad2V() returns;
-                 * the geometric piece 2 v'(r)/r is recovered from
-                 * (gV . rij) / r^2 = v'(r) / r. */
-                double r2 = dot(rij, rij);
-                double lap_ij = vptr->grad2V(rij)
-                              + 2.0 * dot(gV, rij) / r2;
+    for (int s = 0; s < M; s += period) {
 
-                Fi += gV;
-                Li += lap_ij;
+        sliceSites(s, N, rc2, twoLamTau, cTau);
+
+
+        // Add the newly measured observables to acc.
+        accumulateSites(acc);
+        ++numSlices;
+    }
+
+    // Normalize this measurement.
+    const double denom = double(N) * double(numSlices);
+    for (int k = 0; k < NCOL; ++k)
+        estimator(k) += acc[k] / (k >= FIRST_PER_AXIS
+                                  ? denom * NDIM : denom);
+}
+
+void FinalStateEffectsEstimator::sliceSites(int s, int N, double rc2,
+        double twoLamTau, double cTau)
+{
+    PotentialBase *vint = actionPtr->interactionPtr;
+    const double hExt = 0.05;               // A, one-body stencil step
+
+    sites.assign(N, Site());
+    pairs.clear();
+
+    /* Pass 1: every pair once.  Odd derivatives with respect to r_j
+     * have the opposite sign of those with respect to r_i. */
+    for (int i = 0; i < N; ++i) {
+        for (int j = i + 1; j < N; ++j) {
+            // r_i -r_j on slice s.
+            const dVec rij = path.getSeparation(beadLocator{s, i},
+                                                beadLocator{s, j});
+            double r2 = 0.0;
+            for (int a = 0; a < NDIM; ++a)
+                r2 += rij[a] * rij[a];
+            if (r2 >= rc2)
+                continue;
+            const double r = std::sqrt(r2);
+            const double ir = 1.0 / r;
+
+            // Radial derivatives.
+            const double d1 = vint->dVdr(r);
+            const double d2 = vint->d2Vdr2(r);
+            const double d3 = vint->d3Vdr3(r);
+            const double d4 = vint->d4Vdr4(r);
+
+            // w = v'' + (NDIM-1) v'/r and its radial derivatives.
+            const double k = NDIM - 1.0;
+            const double v1r = d1 * ir;
+            const double w1 = d3 + k * (d2 * ir - d1 * ir * ir);
+            const double w2 = d4 + k * (d3 * ir - 2.0 * d2 * ir * ir
+                                        + 2.0 * d1 * ir * ir * ir);
+            const double w1r = w1 * ir;
+
+            double e[NDIM];
+            for (int a = 0; a < NDIM; ++a)
+                e[a] = rij[a] * ir;
+
+            PairBlock pb;
+            pb.i = i;
+            pb.j = j;
+            double Dw[NDIM][NDIM];
+            double trDD = 0.0, trDW = 0.0;
+            for (int a = 0; a < NDIM; ++a)
+                for (int b = 0; b < NDIM; ++b) {
+                    const double ee = e[a] * e[b];
+                    const double dl = (a == b) ? 1.0 : 0.0;
+                    pb.Dv[a][b] = d2 * ee + v1r * (dl - ee);
+                    Dw[a][b] = w2 * ee + w1r * (dl - ee);
+                    trDD += pb.Dv[a][b] * pb.Dv[a][b];
+                    trDW += pb.Dv[a][b] * Dw[a][b];
+                }
+            pairs.push_back(pb);
+
+            Site &si = sites[i], &sj = sites[j];
+            for (int a = 0; a < NDIM; ++a) {
+                si.g[a] += d1 * e[a];
+                sj.g[a] -= d1 * e[a];
+                si.lg[a] += 2.0 * w1 * e[a];
+                sj.lg[a] -= 2.0 * w1 * e[a];
+                for (int b = 0; b < NDIM; ++b) {
+                    si.H[a][b] += pb.Dv[a][b];
+                    sj.H[a][b] += pb.Dv[a][b];
+                    si.lh[a][b] += 2.0 * Dw[a][b];
+                    sj.lh[a][b] += 2.0 * Dw[a][b];
+                }
+
+                // Third and fourth derivatives along the axis a.
+                const double u = e[a], s2 = 1.0 - u * u;
+                const double q = d2 * ir - d1 * ir * ir;
+                const double t3 = d3 * u * u * u + 3.0 * s2 * u * q;
+                const double t4 = d4 * u * u * u * u
+                                + 6.0 * d3 * u * u * s2 * ir
+                                + 3.0 * s2 * (1.0 - 5.0 * u * u) * q * ir;
+                si.a3[a] += t3;
+                sj.a3[a] -= t3;
+                si.a4[a] += t4;
+                sj.a4[a] += t4;
             }
-
-            F2_sum  += dot(Fi, Fi);
-            lap_sum += Li;
+            si.tpair += trDD;
+            sj.tpair += trDD;
+            si.dvdw += trDW;
+            sj.dvdw += trDW;
         }
     }
 
-    const double denom = double(N) * double(M);
-    estimator(0) += F2_sum  / denom;
-    estimator(1) += lap_sum / denom;
+    /* External part, then the link factors. */
+    for (int i = 0; i < N; ++i) {
+        Site &si = sites[i];
+
+        // Derivatives of external potential (if there is one).
+        if (hasExternal) {
+            const OneBody U = externalDerivatives(path(beadLocator{s, i}),
+                                                  hExt);
+            for (int a = 0; a < NDIM; ++a) {
+                si.g[a] += U.g[a];
+                si.lg[a] += U.lg[a];
+                si.a3[a] += U.a3[a];
+                si.a4[a] += U.a4[a];
+                for (int b = 0; b < NDIM; ++b) {
+                    si.H[a][b] += U.h[a][b];
+                    si.lh[a][b] += U.lh[a][b];
+                }
+            }
+        }
+
+        const beadLocator b0 = {s, i};
+        // next: r_s - r_(s+1)
+        const dVec Lp = path.getSeparation(b0, path.next(b0));
+        // previous: r_s - r_(s-1)
+        const dVec Lm = path.getSeparation(b0, path.prev(b0));
+        for (int a = 0; a < NDIM; ++a) {
+            const double shift = 0.5 * cTau * si.g[a];   // c tau V_a/2
+            si.lp[a] = Lp[a] / twoLamTau + shift;
+            si.lm[a] = Lm[a] / twoLamTau + shift;
+        }
+    }
+
+    /* Pass 2: u+- = sum_a G_a l+-_a, own part, then the neighbours. */
+    for (int i = 0; i < N; ++i) {
+        Site &si = sites[i];
+        for (int a = 0; a < NDIM; ++a)
+            for (int b = 0; b < NDIM; ++b) {
+                si.up[a] -= si.H[a][b] * si.lp[b];
+                si.um[a] -= si.H[a][b] * si.lm[b];
+            }
+    }
+    for (const PairBlock &pb : pairs) {
+        Site &si = sites[pb.i], &sj = sites[pb.j];
+        for (int a = 0; a < NDIM; ++a)
+            for (int b = 0; b < NDIM; ++b) {
+                si.up[a] += pb.Dv[a][b] * sj.lp[b];
+                si.um[a] += pb.Dv[a][b] * sj.lm[b];
+                sj.up[a] += pb.Dv[a][b] * si.lp[b];
+                sj.um[a] += pb.Dv[a][b] * si.lm[b];
+            }
+    }
+}
+
+void FinalStateEffectsEstimator::accumulateSites(double acc[NCOL])
+{
+    for (const Site &si : sites) {
+        double f2 = 0.0, lap = 0.0, tself = 0.0, ld2 = 0.0, gdd = 0.0;
+        for (int a = 0; a < NDIM; ++a) {
+            f2 += si.g[a] * si.g[a];
+            lap += si.H[a][a];
+            ld2 += si.lg[a] * si.lg[a];
+            for (int b = 0; b < NDIM; ++b) {
+                tself += si.H[a][b] * si.H[a][b];
+                gdd += si.H[a][b] * si.lh[a][b];
+            }
+        }
+        gdd += 2.0 * si.dvdw;
+        acc[F2] += f2;
+        acc[LAPV] += lap;
+        acc[TSELF] += tself;
+        acc[TPAIR] += si.tpair;
+        acc[D2] += ld2;
+        acc[GDD] += gdd;
+        for (int a = 0; a < NDIM; ++a) {
+            const double kk = si.lp[a] * si.lm[a];
+            const double vaa = si.H[a][a];
+            const double fa2 = si.g[a] * si.g[a];
+            acc[K2] += kk;
+            acc[KVAAK] += kk * vaa;
+            acc[KF2K] += kk * fa2;
+            acc[VAA2] += vaa * vaa;
+            acc[VAVAAA] += si.g[a] * si.a3[a];
+            acc[VAAAA] += si.a4[a];
+            acc[UU] += si.up[a] * si.um[a];
+        }
+    }
+}
+
+FinalStateEffectsEstimator::OneBody
+FinalStateEffectsEstimator::externalDerivatives(const dVec &x, double h)
+{
+    PotentialBase *vext = actionPtr->externalPtr;
+
+    // c[n][m + 2]: weight of U(x + h m) in the n-th derivative (times h^n).
+    static const double c[5][5] = {
+        {0.0, 0.0, 1.0, 0.0, 0.0},
+        {1.0 / 12.0, -8.0 / 12.0, 0.0, 8.0 / 12.0, -1.0 / 12.0},
+        {-1.0 / 12.0, 16.0 / 12.0, -30.0 / 12.0, 16.0 / 12.0, -1.0 / 12.0},
+        {-0.5, 1.0, 0.0, -1.0, 0.5},
+        {1.0, -4.0, 6.0, -4.0, 1.0}};
+
+    int npts = 1;
+    for (int k = 0; k < NDIM; ++k)
+        npts *= 5;
+    std::vector<double> u(npts);
+    for (int p = 0; p < npts; ++p) {
+        dVec y = x;
+        for (int k = 0, q = p; k < NDIM; ++k, q /= 5)
+            y[k] += (q % 5 - 2) * h;
+        u[p] = vext->V(y);
+    }
+
+    // Mixed derivative of orders n[k] along the axes.
+    auto deriv = [&](const int n[NDIM]) {
+        double sum = 0.0;
+        int order = 0;
+        for (int k = 0; k < NDIM; ++k)
+            order += n[k];
+        for (int p = 0; p < npts; ++p) {
+            double w = 1.0;
+            for (int k = 0, q = p; k < NDIM && w != 0.0; ++k, q /= 5)
+                w *= c[n[k]][q % 5];
+            sum += w * u[p];
+        }
+        return sum / std::pow(h, order);
+    };
+
+    OneBody U;
+    for (int a = 0; a < NDIM; ++a) {
+        int n[NDIM] = {};
+        n[a] = 1;
+        U.g[a] = deriv(n);
+        n[a] = 3;
+        U.a3[a] = deriv(n);
+        n[a] = 4;
+        U.a4[a] = deriv(n);
+        for (int b = 0; b < NDIM; ++b) {
+            int nb[NDIM] = {};
+            nb[a] += 1;
+            nb[b] += 1;
+            U.h[a][b] = deriv(nb);
+        }
+        // grad lap U: sum over cc of d^3 U/dx_a dx_cc^2.
+        for (int cc = 0; cc < NDIM; ++cc) {
+            int nc[NDIM] = {};
+            nc[a] += 1;
+            nc[cc] += 2;
+            U.lg[a] += deriv(nc);
+        }
+        // Hessian of lap U: sum over cc of d^4 U/dx_a dx_b dx_cc^2.
+        for (int b = 0; b < NDIM; ++b)
+            for (int cc = 0; cc < NDIM; ++cc) {
+                int nc[NDIM] = {};
+                nc[a] += 1;
+                nc[b] += 1;
+                nc[cc] += 2;
+                U.lh[a][b] += deriv(nc);
+            }
+    }
+    return U;
 }
 
 
+
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// POTENTIAL HESSIAN ESTIMATOR CLASS -----------------------------------------
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
+/*************************************************************************//**
+ *  Constructor.
+******************************************************************************/
+PotentialHessianEstimator::PotentialHessianEstimator(
+        const Path &_path, ActionBase *_actionPtr,
+        const MTRand &_random, double _maxR,
+        int _frequency, std::string _label) :
+    EstimatorBase(_path, _actionPtr, _random, _maxR,
+                  _frequency, _label)
+{
+    initialize(4);
+
+    header = str(format("#%15s%16s%16s%16s")
+            % "F2" % "lapV" % "T_self" % "T_pair");
+}
+
+PotentialHessianEstimator::~PotentialHessianEstimator() { }
+
+void PotentialHessianEstimator::accumulate()
+{
+    const int M = path.numTimeSlices; // Slices per worldline.
+    const int N = path.getTrueNumParticles(); // = N0.
+    PotentialBase *vptr = actionPtr->interactionPtr; // Pair potential.
+    const int period = actionPtr->period; // =1 for primitive; =2 for gsf.
+    const double rc2 = constants()->rc2(); // Cutoff squared.
+
+    double F2_sum  = 0.0; // Sum of |F_i|^2.
+    double lap_sum = 0.0; // Sum of lap_i V.
+    double Ts_sum  = 0.0; // Tr(H_ii^2).
+    double Tp_sum  = 0.0; // sum_j Tr(D_ij^2).
+    int numSlices  = 0; //  number of measured slices.
+
+    // Loop over measured slices and particles.
+    for (int s = 0; s < M; s += period)
+    {
+        for (int i = 0; i < N; ++i)
+        {
+            beadLocator bi = {s, i};
+            dVec   Fi{};                    // grad_i V = -(net force on i).
+            double Li = 0.0;                // Tr H_ii.
+            double Tp = 0.0;                // sum_j Tr(D_ij^2).
+            double Hii[NDIM][NDIM] = {};    // H_ii = sum_j D_ij.
+
+            // Loop over the other particles.
+            for (int j = 0; j < N; ++j)
+            {
+                if (j == i) continue;
+                beadLocator bj = {s, j};
+                dVec rij = path.getSeparation(bi, bj);
+                double r2 = dot(rij, rij);
+                if (r2 >= rc2) continue;            // skip pairs outside r_c.
+
+                dVec gV   = vptr->gradV(rij);       // v'(r) rhat.
+                double d2 = vptr->grad2V(rij);      // v''(r).
+                double v1r = dot(gV, rij) / r2;     // v'(r)/r.
+
+                Fi += gV;
+                Li += d2 + (NDIM - 1) * v1r;
+                Tp += d2 * d2 + (NDIM - 1) * v1r * v1r;
+
+                // D_ij = (v'' - v'/r) rij rij^T / r^2 + (v'/r) 1
+                double c = (d2 - v1r) / r2;
+                for (int a = 0; a < NDIM; ++a)
+                {
+                    for (int b = 0; b < NDIM; ++b)
+                        Hii[a][b] += c * rij[a] * rij[b];
+                    Hii[a][a] += v1r;
+                }
+            }
+
+            // Tr(H_ii^2) = sum_ab H_ab^2, because H_ii is symmetric.
+            double Ts = 0.0;
+            for (int a = 0; a < NDIM; ++a)
+                for (int b = 0; b < NDIM; ++b)
+                    Ts += Hii[a][b] * Hii[a][b];
+
+            F2_sum  += dot(Fi, Fi);
+            lap_sum += Li;
+            Ts_sum  += Ts;
+            Tp_sum  += Tp;
+        }
+        ++numSlices;
+    }
+
+    const double denom = double(N) * double(numSlices);
+    estimator(0) += F2_sum  / denom;
+    estimator(1) += lap_sum / denom;
+    estimator(2) += Ts_sum  / denom;
+    estimator(3) += Tp_sum  / denom;
+}
 
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------

@@ -76,6 +76,7 @@ REGISTER_INTERACTION_POTENTIAL(       "aziz",       AzizPotential, GET_SETUP(), 
 REGISTER_INTERACTION_POTENTIAL(    "silvera",    SilveraPotential, GET_SETUP(), setup.get_cell())
 REGISTER_INTERACTION_POTENTIAL(  "patkowski",  PatkowskiPotential, GET_SETUP(), setup.get_cell())
 REGISTER_INTERACTION_POTENTIAL(       "H2LJ",                H2LJ, GET_SETUP(), setup.get_cell())
+REGISTER_INTERACTION_POTENTIAL("XeLJ",                       XeLJ, GET_SETUP(), setup.get_cell())
 REGISTER_INTERACTION_POTENTIAL(  "szalewicz",  SzalewiczPotential, GET_SETUP(), setup.get_cell())
 REGISTER_INTERACTION_POTENTIAL(   "harmonic",   HarmonicPotential, GET_SETUP(), setup.params["omega"].as<double>())
 REGISTER_INTERACTION_POTENTIAL(     "dipole",     DipolePotential,  NO_SETUP())
@@ -2003,6 +2004,102 @@ H2LJ::H2LJ(const Container *_boxPtr) : PotentialBase(), TabulatedPotential()
       }
  }
 
+//
+// Xenon Lennard-Jones potential class.
+//
+XeLJ::XeLJ(const Container *_boxPtr) : PotentialBase(), TabulatedPotential()
+{
+    EPSILON = 227.55;  // K
+    SIGMA   = 3.949;   // A
+
+    extV.fill(0.0);
+    extdVdr.fill(0.0);
+    extd2Vdr2.fill(0.0);
+
+    // Lookup table.
+    double L = _boxPtr->maxSep;
+    initLookupTable(0.00005 * SIGMA, L);
+
+    // Tail correction.
+    double rc   = constants()->rc();
+    double rat  = SIGMA / rc;
+    double rat3 = rat * rat * rat;
+    double rat9 = rat3 * rat3 * rat3;
+    double term = (1.0/3.0) * rat9 - rat3;
+    double prefactor = (8.0/3.0) * M_PI * EPSILON
+                     * (SIGMA * SIGMA * SIGMA);
+    tailV = prefactor * term;
+}
+
+XeLJ::~XeLJ() { }
+
+// V(r) = 4 eps [ (sigma/r)^12 - (sigma/r)^6 ]
+inline __attribute__((always_inline))
+double XeLJ::valueV(const double r) {
+    double x = r / SIGMA;
+    if (x < EPS) return 0.0;
+
+    double ix2  = 1.0 / (x * x);
+    double ix6  = ix2 * ix2 * ix2;
+    double ix12 = ix6 * ix6;
+    return (4.0 * EPSILON) * (ix12 - ix6);
+}
+
+// dV/dr = 4 eps [ -12 (sigma/r)^12 + 6 (sigma/r)^6 ] / r
+inline __attribute__((always_inline))
+double XeLJ::valuedVdr(const double r) {
+    double x = r / SIGMA;
+    if (x < EPS) return 0.0;
+
+    double ir   = 1.0 / r;
+    double ix2  = 1.0 / (x * x);
+    double ix6  = ix2 * ix2 * ix2;
+    double ix12 = ix6 * ix6;
+    return (4.0 * EPSILON) * (-12.0 * ix12 + 6.0 * ix6) * ir;
+}
+
+// d^2V/dr^2 = 4 eps [12*13 (sigma/r)^12 - 6*7 (sigma/r)^6] / r^2
+inline __attribute__((always_inline))
+double XeLJ::valued2Vdr2(const double r) {
+    double x = r / SIGMA;
+    if (x < EPS) return 0.0;
+
+    double ir2  = 1.0 / (r * r);
+    double ix2  = 1.0 / (x * x);
+    double ix6  = ix2 * ix2 * ix2;
+    double ix12 = ix6 * ix6;
+    return (4.0 * EPSILON) * (12.0 * 13.0 * ix12 - 6.0 * 7.0 * ix6) * ir2;
+}
+// Analytic first and second radial derivatives.
+double XeLJ::dVdr(const double r) { return valuedVdr(r); }
+double XeLJ::d2Vdr2(const double r) { return valued2Vdr2(r); }
+
+// d^3V/dr^3 = 4 eps [-12*13*14 (sigma/r)^12 + 6*7*8 (sigma/r)^6] / r^3
+double XeLJ::d3Vdr3(const double r) {
+    double x = r / SIGMA;
+    if (x < EPS) return 0.0;
+
+    double ir3  = 1.0 / (r * r * r);
+    double ix2  = 1.0 / (x * x);
+    double ix6  = ix2 * ix2 * ix2;
+    double ix12 = ix6 * ix6;
+    return (4.0 * EPSILON) * (-12.0 * 13.0 * 14.0 * ix12
+                              + 6.0 * 7.0 * 8.0 * ix6) * ir3;
+}
+
+// d^4V/dr^4 = 4 eps [12*13*14*15 (sigma/r)^12 - 6*7*8*9 (sigma/r)^6] / r^4
+double XeLJ::d4Vdr4(const double r) {
+    double x = r / SIGMA;
+    if (x < EPS) return 0.0;
+
+    double ir2  = 1.0 / (r * r);
+    double ix2  = 1.0 / (x * x);
+    double ix6  = ix2 * ix2 * ix2;
+    double ix12 = ix6 * ix6;
+    return (4.0 * EPSILON) * (12.0 * 13.0 * 14.0 * 15.0 * ix12
+                              - 6.0 * 7.0 * 8.0 * 9.0 * ix6) * ir2 * ir2;
+}
+
 
  // Silvera-Goldman potential class.
  // See: I.F. Silvera and V.V. Goldman, J. Chem. Phys. 69, 4209 (1978).
@@ -2139,6 +2236,40 @@ H2LJ::H2LJ(const Container *_boxPtr) : PotentialBase(), TabulatedPotential()
    return output;
  }
 
+
+// Analytic first and second radial derivatives.
+double SilveraPotential::dVdr(const double r)
+{
+    return valuedVdr(r);
+}
+
+double SilveraPotential::d2Vdr2(const double r)
+{
+    return valued2Vdr2(r);
+}
+
+double SilveraPotential::d3Vdr3(const double r)
+{
+    const double h = 1.0E-3;
+    const double rc = Rc/BohrPerAngstrom;       // Rc is in bohr
+    if (std::fabs(r - rc) >= 2.0*h)
+        return (valued2Vdr2(r + h) - valued2Vdr2(r - h))/(2.0*h);
+    const double s = (r < rc) ? -h : h;         // step away from Rc
+    return (-3.0*valued2Vdr2(r) + 4.0*valued2Vdr2(r + s)
+            - valued2Vdr2(r + 2.0*s))/(2.0*s);
+}
+
+double SilveraPotential::d4Vdr4(const double r)
+{
+    const double h = 1.0E-3;
+    const double rc = Rc/BohrPerAngstrom;
+    if (std::fabs(r - rc) >= 2.0*h)
+        return (valued2Vdr2(r + h) - 2.0*valued2Vdr2(r)
+                + valued2Vdr2(r - h))/(h*h);
+    const double s = (r < rc) ? -h : h;
+    return (2.0*valued2Vdr2(r) - 5.0*valued2Vdr2(r + s)
+            + 4.0*valued2Vdr2(r + 2.0*s) - valued2Vdr2(r + 3.0*s))/(s*s);
+}
 
 //
 // Patkowski potential.
@@ -2300,11 +2431,13 @@ double PatkowskiPotential::valued2Vdr2(const double r_A)
     const double iR10  = iR8 * iR2;
     const double iR12  = iR10 * iR2;
 
-    auto longterm = [&](int n, double f, double df, double d2f, double iRnp2) {
-        // cdata_n / R^(n+2)  *  [ damp^2 * d2f - 2*n*damp * df + n(n+1) * f ]
-        double bracket = damp2 * d2f
-                       - 2.0 * static_cast<double>(n) * damp * df
-                       + static_cast<double>(n * (n + 1)) * f;
+    auto longterm = [&](int n, double f, double df, double d2f,
+                        double iRnp2) {
+        // cdata_n / R^(n+2) * [ damp^2 R^2 d2f - 2 n damp R df + n(n+1) f ]
+        const double nn = static_cast<double>(n);
+        double bracket = damp2 * R * R * d2f
+                       - 2.0 * nn * damp * R * df
+                       + nn * (nn + 1.0) * f;
         return bracket * iRnp2;
     };
 
@@ -2318,6 +2451,30 @@ double PatkowskiPotential::valued2Vdr2(const double r_A)
 
     // K/bohr^2 -> K/A^2
     return ( d2vshort + d2vlong_au / xK2au ) * BohrPerAngstrom * BohrPerAngstrom;
+}
+
+// Analytic first and second radial derivatives.
+double PatkowskiPotential::dVdr(const double r)
+{
+    return valuedVdr(r);
+}
+
+double PatkowskiPotential::d2Vdr2(const double r)
+{
+    return valued2Vdr2(r);
+}
+
+double PatkowskiPotential::d3Vdr3(const double r)
+{
+    const double h = 1.0E-3;
+    return (valued2Vdr2(r + h) - valued2Vdr2(r - h)) / (2.0 * h);
+}
+
+double PatkowskiPotential::d4Vdr4(const double r)
+{
+    const double h = 1.0E-3;
+    return (valued2Vdr2(r + h) - 2.0 * valued2Vdr2(r)
+            + valued2Vdr2(r - h)) / (h * h);
 }
 
 

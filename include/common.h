@@ -90,6 +90,7 @@
 #define DBL_EPS std::numeric_limits<double>::epsilon() //< Smallest double
 #define BIG 1.0E30      ///< A big number
 #define LBIG 69.07755279 ///< The log of a big number
+#define HBAR2_2MU_KB 24.254367060745 // NIST CODATA 2018 value.
 #define XXX -1          ///< Used to refer to a nonsense beadIndex
 
 using boost::format;

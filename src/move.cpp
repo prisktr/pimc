@@ -2154,8 +2154,8 @@ bool InsertMove::attemptMove() {
     /* We rescale to take into account different attempt probabilities */
     norm *= constants()->attemptProb("remove") / constants()->attemptProb("insert");
 
-    /* Weight for ensemble */
-    norm *= actionPtr->ensembleWeight(wormLength);
+    /* Worm adds wormLength + 1 beads. */
+    norm *= actionPtr->ensembleWeight(wormLength + 1);
 
     /* If we are trying to insert a worm when it is not possible due to a 
      * canonical constraint don't perform the update */
@@ -2342,8 +2342,8 @@ bool RemoveMove::attemptMove() {
     /* We rescale to take into account different attempt probabilities */
     norm *= constants()->attemptProb("insert") / constants()->attemptProb("remove");
 
-    /* Weight for ensemble */
-    norm *= actionPtr->ensembleWeight(-path.worm.length);
+    /* Worm removes worm.length + 1 beads. */
+    norm *= actionPtr->ensembleWeight(-(path.worm.length + 1));
 
     /* If we are trying to remove a worm when it is not possible due to a 
      * canonical constraint don't perform the update */

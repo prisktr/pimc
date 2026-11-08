@@ -7,6 +7,7 @@
  */
 
 #include "common.h"
+#include <complex>
 
 #ifndef ESTIMATOR_H 
 #define ESTIMATOR_H
@@ -828,13 +829,7 @@ class BondOrientationalOrderEstimator : public EstimatorBase {
 // ========================================================================
 // Final State Effects Estimator Class
 // ========================================================================
-/**
- * Compute final state effects in the additive approach.  Leading corrections
- * are due to <\nabla^2 V> and <F^2>, where F = -\nabla V is the force. 
- *
- * @see G.J. Sears, Phys. Rev. B 30, 44 (1984).
- *
- */
+
 class FinalStateEffectsEstimator : public EstimatorBase {
 
     public:
@@ -842,6 +837,75 @@ class FinalStateEffectsEstimator : public EstimatorBase {
                 const MTRand &, double, int _frequency=1,
                 std::string _label="fse");
         ~FinalStateEffectsEstimator();
+
+        static const std::string name;
+        std::string getName() const { return name; }
+
+    private:
+        double cFactor;     // potential action of a measured bead / (tau V)
+        bool hasExternal;   // external potential other than "free"
+
+        /* The columns of the estimator file, in order.  The first four
+         * are per particle (summed over the axes), the others per
+         * particle and per axis. */
+        enum Column {F2 = 0, LAPV, TSELF, TPAIR, K2, KVAAK, KF2K, VAA2,
+                     VAVAAA, VAAAA, UU, D2, GDD, NCOL};
+        static constexpr int FIRST_PER_AXIS = K2;
+
+        /* Derivatives of the external potential at one point. */
+        struct OneBody {
+            dVec g{};           // grad U
+            dMat h{};           // d^2U/dx_a dx_b
+            dVec lg{};          // d(lap U)/dx_a
+            dMat lh{};          // d^2(lap U)/dx_a dx_b
+            dVec a3{};          // d^3U/dx_a^3
+            dVec a4{};          // d^4U/dx_a^4
+        };
+
+        /* Per-particle sums of one slice over its pairs and the
+         * external potential. */
+        struct Site {
+            dVec g{};           // grad_i V
+            dMat H{};           // d^2V/dx_ia dx_ib
+            dVec lg{};          // d(lap V)/dx_ia
+            dMat lh{};          // d^2(lap V)/dx_ia dx_ib
+            dVec a3{};          // V_aaa along each axis
+            dVec a4{};          // V_aaaa along each axis
+            double tpair = 0.0; // sum_j Tr(Dv_ij^2)
+            double dvdw = 0.0;  // sum_j Tr(Dv_ij Dw_ij)
+            dVec lp{};          // link factor l+
+            dVec lm{};          // link factor l-
+            dVec up{};          // u+ per axis
+            dVec um{};          // u- per axis
+        };
+
+        /* A pair inside the cutoff and its block Dv, kept for pass 2. */
+        struct PairBlock {
+            int i, j;
+            dMat Dv;
+        };
+
+        std::vector<Site> sites;        // workspace
+        std::vector<PairBlock> pairs;   // workspace
+
+        OneBody externalDerivatives(const dVec &, double);
+        void sliceSites(int, int, double, double, double);
+        void accumulateSites(double acc[NCOL]);
+        void accumulate();
+};
+
+
+// ========================================================================
+// Potential Hessian Estimator Class
+// ========================================================================
+
+class PotentialHessianEstimator : public EstimatorBase {
+
+    public:
+        PotentialHessianEstimator(const Path &, ActionBase *,
+                const MTRand &, double, int _frequency=1,
+                std::string _label="hessian");
+        ~PotentialHessianEstimator();
 
         static const std::string name;
         std::string getName() const { return name; }

@@ -125,7 +125,7 @@ void ConstantParameters::initConstants(po::variables_map &params) {
     imagTimeLength_ = params["imaginary_time_length"].as<double>();
     mu_             = params["chemical_potential"].as<double>();
     m_              = params["mass"].as<double>();
-    lambda_         = 24.24 / m_;
+    lambda_         = HBAR2_2MU_KB / m_;
     rc_             = params["potential_cutoff"].as<double>();
     rc2_            = rc_*rc_;
     C0_             = params["worm_constant"].as<double>();

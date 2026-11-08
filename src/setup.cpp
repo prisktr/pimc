@@ -1080,7 +1080,7 @@ bool Setup::worldlines() {
         /* Compute the average inter-particle separation */
         double ell = pow((1.0*params["number_particles"].as<int>() /
                     params["volume"].as<double>()),-1.0/(1.0*NDIM));
-        double lambda = 24.24 / params["mass"].as<double>();
+        double lambda = HBAR2_2MU_KB / params["mass"].as<double>();
         Mbar = int(ell*ell/(16*lambda*params["imaginary_time_step"].as<double>()));
         if (Mbar < 2)
             Mbar = 2;
